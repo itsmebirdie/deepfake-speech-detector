@@ -1,5 +1,7 @@
 # Work Plan: PhaseCon-Net
 
+> **Day-to-day workflow lives in [`ISSUES.md`](ISSUES.md)**: a single numbered PR sequence (PR-01 to PR-36) with blockers, reviewers and gates. This file explains the reasoning; `ISSUES.md` is what you follow.
+
 Three members, three vertical slices, one set of contracts (`INTERFACES.md`). There are **no dates** here. Order is enforced by
 **steps** (per person) and **gates** (shared checkpoints where everyone's work meets). A step is finished only when its
 "Done when" line is true and its PR is merged.
