@@ -1,7 +1,6 @@
 """LibriSeVoc dataset. Owner: Member A (step A3). Contract: docs/INTERFACES.md section 1."""
 from typing import Dict, List, Optional
 
-import torch
 from torch.utils.data import DataLoader, Dataset
 
 from .splits import Entry

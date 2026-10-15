@@ -1,6 +1,4 @@
 """Unrolled Learnable Consistency Projection (Eqs. 1-3). Owner: Member B (step B4)."""
-from typing import List
-
 import torch
 import torch.nn as nn
 

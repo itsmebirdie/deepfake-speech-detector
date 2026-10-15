@@ -34,5 +34,6 @@ pytest -q          # most tests are skipped until implemented
 | `ipr/` | Invention-disclosure template for the university IPR cell |
 
 ## Read first
+0. `docs/ISSUES.md`: the numbered PR sequence everyone follows (start here)
 1. `docs/WORK_PLAN.md`: who builds what, in what order
 2. `docs/INTERFACES.md`: tensor shapes and module contracts all three members code against

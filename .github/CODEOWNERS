@@ -1,0 +1,16 @@
+# Replace the handles with the real GitHub usernames in PR-01.
+/src/phasecon/data/          @LIZA_GITHUB
+/src/phasecon/evaluation/    @LIZA_GITHUB
+/src/phasecon/signal/        @NISHA_GITHUB
+/src/phasecon/models/ulcp.py                 @NISHA_GITHUB
+/src/phasecon/models/discrepancy*.py         @NISHA_GITHUB
+/src/phasecon/models/phase_branch.py         @NISHA_GITHUB
+/src/phasecon/losses/consistency.py          @NISHA_GITHUB
+/src/phasecon/models/baseline/               @MAANAS_GITHUB
+/src/phasecon/models/fusion.py               @MAANAS_GITHUB
+/src/phasecon/models/heads.py                @MAANAS_GITHUB
+/src/phasecon/models/phasecon_net.py         @MAANAS_GITHUB
+/src/phasecon/training/                      @MAANAS_GITHUB
+/src/phasecon/losses/classification.py       @MAANAS_GITHUB
+/src/phasecon/losses/combined.py             @MAANAS_GITHUB
+/docs/INTERFACES.md          @LIZA_GITHUB @NISHA_GITHUB @MAANAS_GITHUB
