@@ -994,6 +994,8 @@ Each column is one person. Read a column top to bottom; PRs in the same row rang
 `scripts/create_github_issues.sh` (needs the GitHub CLI `gh`, logged in) creates:
 - labels: `owner:A`, `owner:B`, `owner:C`, `gate`, and one `sprint:N` per sprint
 - one milestone per sprint
-- one issue per PR (`[PR-NN][A] title`) and one per gate, in numeric order, so **issue numbers line up with PR numbers** in a fresh repo
+- one issue per PR (`[PR-NN][A] title`) and one per gate, created in numeric order
 
-Run it once, in a repo with no existing issues. Each issue has the goal, blockers, task checklist and a link back to its section here.
+GitHub numbers issues and pull requests from one shared counter, and gate issues sit between PR issues, so the issue for PR-02 is not `#2`. The `[PR-NN]` prefix in each title is the reliable key; use the real GitHub number in `Closes #<number>`.
+
+Run it once, from one machine. It refuses to run if the repo already has issues. Windows PowerShell: `scripts/create_github_issues.ps1`; macOS, Linux or Git Bash: `scripts/create_github_issues.sh`. Each issue has the goal, blockers, task checklist and a link back to its section here.
