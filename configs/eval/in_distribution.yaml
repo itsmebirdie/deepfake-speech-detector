@@ -1,0 +1,4 @@
+eval:
+  split: test
+  metrics: [eer, accuracy, auc]
+  save_scores: true          # per-utterance scores -> experiments/results/

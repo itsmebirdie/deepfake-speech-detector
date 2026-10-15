@@ -1,0 +1,5 @@
+eval:
+  protocol: leave_one_vocoder_out
+  metrics: [eer, accuracy, auc]
+  report_per_vocoder: true
+  save_scores: true

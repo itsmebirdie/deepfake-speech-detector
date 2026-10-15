@@ -1,0 +1,21 @@
+data:
+  root: data/raw/LibriSeVoc
+  # Official split files ship with the baseline repo; copy them to data/splits/ (step A2)
+  split_files:
+    train: data/splits/train.txt
+    dev: data/splits/dev.txt
+    test: data/splits/test.txt
+  # Label convention used INSIDE this repo: 0 = bona fide, 1 = synthetic.
+  # The baseline wrapper converts to/from the baseline's own convention.
+  # vocoder_id: 0 = bona fide, 1..6 = vocoders. FILL IN from the dataset folder names (step A2).
+  vocoders: []          # e.g. [wavenet, wavernn, ...]  <- verify, do not trust memory
+  subset:
+    enabled: false
+    per_vocoder_train: null
+    per_vocoder_dev: null
+    per_vocoder_test: null
+    manifest_dir: data/subsets
+  num_workers: 4
+  lovo:
+    held_out: null      # vocoder name for leave-one-vocoder-out runs
+    split_dir: data/splits/lovo

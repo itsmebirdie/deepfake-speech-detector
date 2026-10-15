@@ -1,0 +1,3 @@
+_base_: [../model/phasecon.yaml]
+model:
+  baseline: { freeze_encoder: true }

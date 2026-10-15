@@ -1,0 +1,16 @@
+torch>=2.1
+torchaudio>=2.1
+numpy
+scipy
+soundfile
+pyyaml
+tqdm
+scikit-learn
+pandas
+matplotlib
+tensorboard
+gdown
+# dev
+pytest
+ruff
+pre-commit

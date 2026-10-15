@@ -1,0 +1,3 @@
+_base_: [../model/phasecon.yaml]
+model:
+  phase_branch: { ulcp: { learnable: false, learnable_momentum: false, correction_channels: 0 } }

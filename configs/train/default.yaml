@@ -1,0 +1,16 @@
+train:
+  epochs: 50
+  batch_size: 32
+  amp: true                  # STFT / ULCP are forced to fp32 inside the model
+  grad_clip: 5.0
+  optimizer:
+    name: adam
+    lr_encoder: 1.0e-5       # pretrained RawNet2 encoder
+    lr_new: 1.0e-4           # ULCP, discrepancy encoder, fusion, heads
+    weight_decay: 1.0e-4
+  scheduler: { name: cosine, warmup_epochs: 2 }
+  early_stopping: { metric: dev_eer, mode: min, patience: 8 }
+  loss:
+    beta: 0.5                # vocoder-ID weight
+    mu: 0.1                  # consistency weight (Eq. 6)
+  checkpoint: { save_best: true, save_last: true }

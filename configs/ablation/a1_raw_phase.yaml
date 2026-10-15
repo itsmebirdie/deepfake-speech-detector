@@ -1,0 +1,3 @@
+_base_: [../model/phasecon.yaml]
+model:
+  phase_branch: { discrepancy: { mode: raw_phase } }

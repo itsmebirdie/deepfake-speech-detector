@@ -1,0 +1,3 @@
+_base_: [../model/phasecon.yaml]
+model:
+  phase_branch: { ulcp: { num_steps: 3 } }   # run with K in {1,3,5,8}: see scripts/run_ablations.py

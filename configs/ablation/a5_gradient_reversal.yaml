@@ -1,0 +1,3 @@
+_base_: [../model/phasecon.yaml]
+model:
+  heads: { gradient_reversal: true }

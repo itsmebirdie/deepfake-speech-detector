@@ -1,0 +1,31 @@
+_base_: [baseline_only.yaml]
+model:
+  name: phasecon_net
+  phase_branch:
+    enabled: true
+    stft_resolutions:        # (n_fft, hop, win_length)
+      - [512, 128, 512]
+      - [1024, 256, 1024]
+      - [2048, 512, 2048]
+    ulcp:
+      num_steps: 5           # K
+      init: zeros            # deterministic init phi_hat^(0): zeros | linear_group_delay
+      learnable_momentum: true
+      momentum_init: 0.99
+      correction_channels: 8 # g_theta: small conv correction; 0 disables it
+      learnable: true        # false => fixed fast Griffin-Lim (ablation ii)
+    discrepancy:
+      tau: 1.0e-3            # confidence weight w = A / (A + tau)
+      use_if_channel: true   # delta-psi channel
+      mode: residual         # residual | raw_phase (ablation i)
+    encoder:
+      channels: [16, 32, 64]
+      out_dim: 128
+  fusion:
+    type: gated_cross_attention   # gated_cross_attention | concat (ablation iii)
+    dim: 256
+    num_heads: 4
+    dropout: 0.1
+  heads:
+    vocoder_head: true
+    gradient_reversal: false      # ablation v

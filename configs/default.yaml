@@ -1,0 +1,6 @@
+seed: 1234
+device: cuda            # cuda | cpu
+output_dir: experiments
+audio:
+  sample_rate: 16000
+  num_samples: 64600    # ~4 s. VERIFY against third_party baseline (RawNet2 input length)

@@ -1,0 +1,8 @@
+model:
+  name: baseline_only
+  baseline:
+    repo_dir: third_party/Synthetic-Voice-Detection-Vocoder-Artifacts
+    weights: weights/baseline_pretrained.pth
+    freeze_encoder: false
+    num_vocoder_classes: 7   # 6 vocoders + bona fide. VERIFY against baseline head
+  phase_branch: { enabled: false }
