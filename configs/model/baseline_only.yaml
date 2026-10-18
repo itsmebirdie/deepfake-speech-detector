@@ -4,5 +4,5 @@ model:
     repo_dir: third_party/Synthetic-Voice-Detection-Vocoder-Artifacts
     weights: weights/baseline_pretrained.pth
     freeze_encoder: false
-    num_vocoder_classes: 7   # 6 vocoders + bona fide. VERIFY against baseline head
+    num_vocoder_classes: 7   # 6 vocoders + bona fide. Verified: fc2_multi_gru out_features=7 (model.py)
   phase_branch: { enabled: false }
