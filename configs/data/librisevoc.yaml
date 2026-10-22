@@ -7,8 +7,9 @@ data:
     test: data/splits/test.txt
   # Label convention used INSIDE this repo: 0 = bona fide, 1 = synthetic.
   # The baseline wrapper converts to/from the baseline's own convention.
-  # vocoder_id: 0 = bona fide, 1..6 = vocoders. FILL IN from the dataset folder names (step A2).
-  vocoders: []          # e.g. [wavenet, wavernn, ...]  <- verify, do not trust memory
+  # vocoder_id: 0 = bona fide (folder gt), 1..6 = the folders below, in this order.
+  # Order matches the released baseline's vocoder head (eval.py); see docs/DATASET_NOTES.md section 3.
+  vocoders: [wavegrad, diffwave, parallel_wave_gan, wavernn, wavenet, melgan]
   subset:
     enabled: false
     per_vocoder_train: null
