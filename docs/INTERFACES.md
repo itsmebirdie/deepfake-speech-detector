@@ -17,8 +17,15 @@ Item: `{waveform [T], label [], vocoder_id [], utt_id str}`. Batch: `{waveform [
 Until B7 lands, C develops against a `DummyPhaseBranch` that returns random tensors of exactly these shapes.
 
 ## 4. Baseline wrapper -> fusion (owner C, internal but documented)
-`BaselineRawNet2.forward_features(wav [B,T]) -> H_b [B,T_b,C_b]`. `T_b`, `C_b` are discovered in step C1 and written here:
-- T_b = TBD (C1)   - C_b = TBD (C1)
+`BaselineRawNet2.forward_features(wav [B,T]) -> H_b [B,T_b,C_b]`. Discovered in PR-08 (checked against the baseline code at commit 74b8527):
+- **C_b = 1024**: the GRU hidden size. `H_b` is the GRU output at every time step, before the baseline's pooling.
+- **T_b = 43** for the native input of 96,000 samples (4 s at 24 kHz). In general `T_b = floor(...floor(floor((T - 1024) / 3) / 3).../ 3)` with seven divisions by 3
+  (Sinc conv with a 1025-tap kernel and no padding, then one max-pool of 3 after the front-end and one in each of the six residual blocks).
+  `BaselineRawNet2.feature_length(T)` computes it; it is 28 for T = 64,000 (4 s at 16 kHz) and 1 for the minimum input of 3,211 samples.
+  **PR-19: set `model.phase_branch.encoder.t_out` from this** (the dummy branch uses 64 until it is set).
+- **Pooling:** the baseline's heads read only the LAST time step, `H[:, -1, :]`. PhaseConNet pools the same way by default (`model.heads.pooling: last`; `mean` is available), so with the phase branch off it reproduces the baseline.
+- **Sample rate:** the released weights and the Sinc front-end assume **24 kHz / 96,000 samples**. `configs/default.yaml` still says 16 kHz / 64,000 (DATASET_NOTES section 7, decision pending); `build_model` warns while they differ. Real weights must be run at 24 kHz.
+- **Conventions:** `logits_bin` of the wrapper is the baseline's own log-softmax output with the two columns swapped to the repo order `[bona fide, synthetic]`. Log-probabilities are logits up to a per-row constant; cross-entropy and the score `logits_bin[:,1] - logits_bin[:,0]` do not depend on that constant. The baseline's binary target is `y == 0` (1 = bona fide), the opposite of this repo; `BaselineRawNet2.repo_label_to_baseline` converts.
 
 ## 5. Model -> trainer / evaluator (owner C -> A)
 `model(wav [B,T]) -> {'logits_bin': [B,2], 'logits_voc': [B,n_voc]?, 'cons_per_sample': [B]?}`
