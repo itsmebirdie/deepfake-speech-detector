@@ -93,7 +93,7 @@ Checked on the extracted data: every name in each split file exists in `gt/`, al
 - **Labels:** the multi-class target is 0 = gt, 1..6 = vocoders (in `os.listdir()` order). The binary target is `y == 0`, so **1 = bona fide, 0 = synthetic**. This is the opposite of this repo's convention (0 = bona fide, 1 = synthetic); the baseline wrapper (PR-08) must convert.
 - **Heads:** `fc2_binary_gru` has 2 outputs and `fc2_multi_gru` has 7 outputs.
 - **Loss:** `LAMDA * CE(binary) + (1 - LAMDA) * CE(multi)` with `LAMDA = 0.5`.
-- **EER:** the baseline repo has **no EER implementation**. `main.py` reports only accuracy. PR-06 / PR-07 must implement EER themselves; there is no baseline function to match against.
+- **EER:** the baseline repo has **no EER implementation**. `main.py` reports only accuracy. So there is no baseline function to match. EER now lives in `src/phasecon/evaluation/metrics.py` (PR-07, ROC-based); `tests/test_metrics.py` checks it gives exactly the same EER as the ASVspoof challenge formula and a brute-force threshold sweep.
 - **Logits to score:** both heads end in `LogSoftmax`. Binary output index 0 = synthetic, index 1 = bona fide. Our score (higher = more synthetic, `INTERFACES.md` section 5) is `score = logp[:, 0] - logp[:, 1]`, i.e. in repo order `logits_bin = [logp[:, 1], logp[:, 0]]`. `scripts/eval_baseline.py` uses exactly this.
 
 ## 7. Decisions needed from the team

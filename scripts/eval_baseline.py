@@ -11,8 +11,7 @@ Score convention (docs/INTERFACES.md section 5): higher score = more likely SYNT
 The baseline's binary head is log-softmax over [synthetic, bona fide] (its training target is
 `y == 0`, so index 1 = bona fide), therefore
     score = logp[:, 0] - logp[:, 1]
-The baseline repo has no EER code; EER here comes from the ROC curve (scikit-learn), and PR-07
-replaces it with the shared `evaluation/metrics.py`.
+The baseline repo has no EER code; EER and AUC come from the shared `evaluation/metrics.py` (PR-07).
 
 Two input modes:
   first4s  (default) the first 4 s of every clip, as in the authors' training/dev loop (main.py)
@@ -33,11 +32,11 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import yaml
-from sklearn.metrics import roc_auc_score, roc_curve
 
 from phasecon.data.librisevoc import LibriSeVocDataset
 from phasecon.data.splits import read_split_file
 from phasecon.data.transforms import pad_or_crop
+from phasecon.evaluation.metrics import compute_auc, compute_eer
 from phasecon.utils.config import load_many
 
 BASELINE_RATE = 24000
@@ -59,14 +58,6 @@ def load_baseline(baseline_dir: str, weights: str, device: str):
     return model
 
 
-def compute_eer(scores: np.ndarray, labels: np.ndarray):
-    """EER from the ROC curve: the point where false acceptance = false rejection."""
-    fpr, tpr, thresholds = roc_curve(labels, scores, pos_label=FAKE)
-    fnr = 1 - tpr
-    i = int(np.nanargmin(np.abs(fnr - fpr)))
-    return float((fpr[i] + fnr[i]) / 2), float(thresholds[i])
-
-
 def summarize(scores, labels, pred_voc, vocoder_ids, vocoders):
     eer, thr = compute_eer(scores, labels)
     pred = (scores > 0).astype(int)  # argmax of the binary head
@@ -75,7 +66,7 @@ def summarize(scores, labels, pred_voc, vocoder_ids, vocoders):
         "eer": eer,
         "eer_percent": round(100 * eer, 4),
         "eer_threshold": thr,
-        "auc": float(roc_auc_score(labels, scores)),
+        "auc": compute_auc(scores, labels),
         "accuracy_argmax": float((pred == labels).mean()),
         "accuracy_at_eer_threshold": float(((scores >= thr).astype(int) == labels).mean()),
         "vocoder_id_accuracy": float((pred_voc == vocoder_ids).mean()),
