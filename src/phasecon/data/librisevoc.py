@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from .collate import collate_fn
 from .splits import Entry, read_split_file
+from .subset import load_manifest
 from .transforms import pad_or_crop
 
 
@@ -75,6 +76,9 @@ class LibriSeVocDataset(Dataset):
 def build_dataloader(cfg: Dict, split: str, train: bool, entries: Optional[List[Entry]] = None) -> DataLoader:
     """Resolve entries from cfg (official split, subset manifest, or LOVO split) and wrap in a DataLoader.
 
+    With `data.subset.enabled: true`, a split whose `per_vocoder_<split>` is set reads
+    `<manifest_dir>/<split>.txt`; a split left at null uses the full official split.
+
     Needs `cfg["data"]` (configs/data/librisevoc.yaml) and `cfg["audio"]` (configs/default.yaml).
     Batch size comes from `cfg["train"]["batch_size"]` (default 32). Shuffling happens only when
     `train=True`, with a generator seeded from `cfg["seed"]` so runs are repeatable.
@@ -82,11 +86,14 @@ def build_dataloader(cfg: Dict, split: str, train: bool, entries: Optional[List[
     data_cfg = cfg["data"]
     audio_cfg = cfg["audio"]
     if entries is None:
-        if data_cfg.get("subset", {}).get("enabled"):
-            raise NotImplementedError("subset manifests are added in PR-09")
         if data_cfg.get("lovo", {}).get("held_out"):
             raise NotImplementedError("LOVO splits are added in PR-13")
-        entries = read_split_file(data_cfg["split_files"][split], data_cfg["root"], data_cfg["vocoders"])
+        subset = data_cfg.get("subset", {})
+        if subset.get("enabled") and subset.get(f"per_vocoder_{split}") is not None:
+            # balanced subset manifest built by scripts/make_subset.py (DATASET_NOTES.md section 9)
+            entries = load_manifest(os.path.join(subset.get("manifest_dir", "data/subsets"), f"{split}.txt"))
+        else:
+            entries = read_split_file(data_cfg["split_files"][split], data_cfg["root"], data_cfg["vocoders"])
     dataset = LibriSeVocDataset(
         entries,
         num_samples=audio_cfg["num_samples"],

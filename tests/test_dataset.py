@@ -140,7 +140,77 @@ def test_no_utt_overlap_between_splits():
 
 def test_balanced_subset_is_deterministic():
     """Same seed -> identical manifest; per-vocoder counts exact; classes balanced."""
-    pytest.skip("not implemented yet (PR-09)")
+    from collections import Counter
+
+    from phasecon.data.subset import build_balanced_subset
+
+    entries = read_split_file(str(SPLITS / "train.txt"), "unused", VOCODERS)
+    a = build_balanced_subset(entries, per_vocoder=100, seed=1234)
+    b = build_balanced_subset(entries, per_vocoder=100, seed=1234)
+    c = build_balanced_subset(entries, per_vocoder=100, seed=99)
+    assert a == b
+    assert a != c
+    counts = Counter(e.vocoder_id for e in a)
+    assert all(counts[v] == 100 for v in range(1, 7))
+    assert counts[0] == 600  # real total == fake total
+    assert len({(e.path) for e in a}) == len(a)  # no clip twice
+    by_utt = {}
+    for e in a:
+        by_utt.setdefault(e.utt_id, []).append(e)
+    assert all(len(g) == 2 and {x.label for x in g} == {0, 1} for g in by_utt.values())  # real + its own fake
+    small = build_balanced_subset(entries, per_vocoder=10, seed=1234)
+    assert set(e.utt_id for e in small) <= set(e.utt_id for e in a)  # bigger subsets extend smaller ones
+    with pytest.raises(ValueError):
+        build_balanced_subset(entries, per_vocoder=1321, seed=1234)  # 7,920 // 6 = 1,320 max
+    unbalanced = build_balanced_subset(entries, per_vocoder=5, seed=1234, balance_real=False)
+    assert len(unbalanced) == 35 and Counter(e.label for e in unbalanced) == {0: 5, 1: 30}
+
+
+def test_subset_manifest_roundtrip_and_loader(tmp_path):
+    """save_manifest/load_manifest round-trip, and data.subset.enabled=true makes the loader use it."""
+    from phasecon.data.subset import build_balanced_subset, load_manifest, save_manifest
+
+    names = [f"1_2_00000{i}_000001" for i in range(6)]
+    make_fake_librisevoc(tmp_path, names, [4.0] * 6)
+    split = tmp_path / "split.txt"
+    split.write_text("\n".join(n + ".wav" for n in names) + "\n")
+    entries = read_split_file(str(split), str(tmp_path), VOCODERS, check_exists=True)
+    picked = build_balanced_subset(entries, per_vocoder=1, seed=7)
+    save_manifest(picked, str(tmp_path / "subsets" / "train.txt"), header="test manifest")
+    assert load_manifest(str(tmp_path / "subsets" / "train.txt")) == picked
+    cfg = {
+        "seed": 1,
+        "audio": {"sample_rate": 24000, "num_samples": 24000},
+        "data": {
+            "root": str(tmp_path),
+            "split_files": {"train": str(split)},
+            "vocoders": VOCODERS,
+            "num_workers": 0,
+            "subset": {"enabled": True, "per_vocoder_train": 1, "manifest_dir": str(tmp_path / "subsets")},
+        },
+        "train": {"batch_size": 4},
+    }
+    loader = build_dataloader(cfg, "train", train=False)
+    assert len(loader.dataset) == 12
+    labels = [x.item() for b in loader for x in b["label"]]
+    assert labels.count(0) == 6 and labels.count(1) == 6
+
+
+def test_committed_manifests_match_config():
+    """data/subsets/*.txt are exactly what scripts/make_subset.py builds from the committed config."""
+    from phasecon.data.subset import build_balanced_subset, load_manifest
+    from phasecon.utils.config import load_many
+
+    cfg = load_many([str(REPO / "configs" / "default.yaml"), str(REPO / "configs" / "data" / "librisevoc.yaml")])
+    subset = cfg["data"]["subset"]
+    for split in ("train", "dev", "test"):
+        n = subset.get(f"per_vocoder_{split}")
+        path = REPO / subset["manifest_dir"] / f"{split}.txt"
+        if n is None:
+            assert not path.exists()
+            continue
+        entries = read_split_file(str(SPLITS / f"{split}.txt"), "unused", VOCODERS)
+        assert load_manifest(str(path)) == build_balanced_subset(entries, n, cfg["seed"])
 
 
 def test_lovo_split_excludes_held_out():

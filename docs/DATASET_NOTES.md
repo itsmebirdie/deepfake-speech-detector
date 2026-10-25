@@ -142,7 +142,22 @@ Run: `python scripts/eval_baseline.py --baseline-dir ../baseline-repo --split te
 
 Sources: [Sun et al., CVPRW 2023, arXiv 2304.13085](https://arxiv.org/pdf/2304.13085) (Table 3) · [earlier preprint, arXiv 2302.09198](https://arxiv.org/pdf/2302.09198)
 
+## 9. Balanced subset (PR-09)
+
+**Definition:** training and tuning may use a fixed, 50/50 balanced subset; final numbers are always reported on the **full official test split**.
+
+| Split | per_vocoder | Utterances | Clips | Real | Fake (each vocoder) | Manifest |
+|---|---|---|---|---|---|---|
+| train | 1000 | 6,000 of 7,920 | 12,000 | 6,000 | 6,000 (1,000) | `data/subsets/train.txt` |
+| dev | 200 | 1,200 of 2,640 | 2,400 | 1,200 | 1,200 (200) | `data/subsets/dev.txt` |
+| test | none | all 2,641 | 18,487 | 2,641 | 15,846 (2,641) | none: full official split |
+
+**How it is built** (`build_balanced_subset`, seed = `seed` in `configs/default.yaml` = 1234): shuffle the split's utterances with the seed, take the first 6 x per_vocoder, and give each one its real clip plus exactly one fake, cycling through the vocoders in `data.vocoders` order. So every vocoder has the same count, real = fake, and every fake sits next to the real recording it was made from (same speaker and words). A larger per_vocoder keeps every utterance of a smaller one.
+
+**Use it:** set `data.subset.enabled: true` (or `--override data.subset.enabled=true`). Rebuild with `python scripts/make_subset.py`; the same config always gives byte-identical manifests, and `tests/test_dataset.py::test_committed_manifests_match_config` checks the committed files match.
+
+**Why these counts:** 12,000 training clips is about 22% of the full 55,440, so an epoch is about 4.6x faster. They are a starting point; if the slowest GPU in the team needs less, lower `per_vocoder_train` and re-run the script (the maximum is 1,320 for train and 440 for dev).
+
 ## Later items
 
-- Subset definition (per-vocoder counts, seed, manifest files): _later_ (PR-09)
 - LOVO protocol (exact definition): _later_ (PR-13)
