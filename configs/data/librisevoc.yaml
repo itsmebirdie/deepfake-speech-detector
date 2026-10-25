@@ -10,11 +10,11 @@ data:
   # vocoder_id: 0 = bona fide (folder gt), 1..6 = the folders below, in this order.
   # Order matches the released baseline's vocoder head (eval.py); see docs/DATASET_NOTES.md section 3.
   vocoders: [wavegrad, diffwave, parallel_wave_gan, wavernn, wavenet, melgan]
-  subset:
-    enabled: false
-    per_vocoder_train: null
-    per_vocoder_dev: null
-    per_vocoder_test: null
+  subset:                 # balanced subset (PR-09, DATASET_NOTES.md section 9)
+    enabled: false        # true = train/dev read data/subsets/<split>.txt
+    per_vocoder_train: 1000   # 6,000 utterances -> 12,000 clips (6,000 real + 1,000 per vocoder)
+    per_vocoder_dev: 200      # 1,200 utterances -> 2,400 clips
+    per_vocoder_test: null    # null = always report on the FULL official test split
     manifest_dir: data/subsets
   num_workers: 4
   lovo:
