@@ -34,3 +34,8 @@ place the score convention is defined; A's metrics and baseline-parity checks de
 
 ## 6. Results (owner A)
 `experiments/results/<run_name>/{config.yaml, metrics.json, scores.csv}`; `metrics.json = {eer, eer_threshold, auc, accuracy, per_vocoder: {...}}`.
+Written only through `evaluation/results.py::write_results` (read back with `read_results`); `scripts/evaluate.py` produces it for any model.
+- `config.yaml`: the full merged config of the run.
+- `metrics.json`: `eer`, `eer_threshold`, `auc`, `accuracy` (at score 0), `accuracy_at_eer`, `per_vocoder: {<name>: {eer, auc, caught, n_fake}}`, `bona_fide_correct`, plus `run_name`, `split`, `protocol`, `held_out`, `checkpoint`, `git_hash`, `git_dirty`, `created`.
+- `scores.csv`: `utt_id,label,vocoder_id,score`, one row per clip, higher score = more synthetic.
+- A folder that already has `metrics.json` is never overwritten unless asked (`--overwrite`).

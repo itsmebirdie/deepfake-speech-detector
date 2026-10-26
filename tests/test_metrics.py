@@ -139,3 +139,85 @@ def test_evaluate_uses_only_logits_bin(tmp_path):
     assert set(out["per_vocoder"]) == {"wavegrad", "diffwave"}
     rows = (tmp_path / "scores.csv").read_text().strip().splitlines()
     assert rows[0] == "utt_id,label,vocoder_id,score" and len(rows) == 6
+
+
+def test_results_round_trip(tmp_path):
+    """write_results -> read_results gives back the same config, metrics and scores; no silent overwrite."""
+    pytest.importorskip("torch")
+    from phasecon.evaluation.results import read_results, write_results
+
+    cfg = {"seed": 1, "data": {"vocoders": ["wavegrad"]}, "model": {"name": "baseline_only"}}
+    scores = {
+        "utt_id": ["a", "a", "b", "b"],
+        "label": np.array([0, 1, 0, 1]),
+        "vocoder_id": np.array([0, 1, 0, 1]),
+        "score": np.array([-1.5, 2.25, 0.125, 3.0]),
+    }
+    metrics = summarize(scores["score"], scores["label"], scores["vocoder_id"], ["wavegrad"])
+    run_dir = str(tmp_path / "run1")
+    write_results(run_dir, cfg, metrics, scores)
+    back = read_results(run_dir)
+    assert back["config"] == cfg
+    for k in ("eer", "eer_threshold", "auc", "accuracy", "per_vocoder"):
+        assert back["metrics"][k] == metrics[k]
+    assert {"git_hash", "git_dirty", "created"} <= set(back["metrics"])
+    assert back["scores"]["utt_id"] == scores["utt_id"]
+    assert np.array_equal(back["scores"]["label"], scores["label"])
+    assert np.array_equal(back["scores"]["vocoder_id"], scores["vocoder_id"])
+    assert np.allclose(back["scores"]["score"], scores["score"])
+    with pytest.raises(FileExistsError):
+        write_results(run_dir, cfg, metrics, scores)
+    write_results(run_dir, cfg, metrics, None, overwrite=True)
+    with pytest.raises(ValueError):
+        write_results(str(tmp_path / "bad"), cfg, {"eer": 0.1}, None)
+
+
+def test_evaluate_script_end_to_end(tmp_path, baseline_dir, random_baseline_weights):
+    """scripts/evaluate.py on the baseline produces a complete results folder (in-distribution and LOVO).
+
+    Uses a tiny fake LibriSeVoc and the baseline architecture with fixed random weights; on a machine
+    with the real data, run the script itself (see its docstring)."""
+    import importlib.util
+    from pathlib import Path
+
+    sf = pytest.importorskip("soundfile")
+    yaml = pytest.importorskip("yaml")
+    from phasecon.data.splits import build_lovo_splits, read_split_file, write_split
+    from phasecon.evaluation.results import read_results
+
+    repo = Path(__file__).resolve().parents[1]
+    vocoders = yaml.safe_load(open(repo / "configs" / "data" / "librisevoc.yaml"))["data"]["vocoders"]
+    names = ["1_2_000001_000001", "1_2_000002_000001"]
+    rng = np.random.default_rng(0)
+    for utt in names:
+        for folder, fname in [("gt", f"{utt}.wav")] + [(v, f"{utt}_gen.wav") for v in vocoders]:
+            (tmp_path / "data" / folder).mkdir(parents=True, exist_ok=True)
+            sf.write(tmp_path / "data" / folder / fname, (rng.standard_normal(30000) * 0.1).astype(np.float32), 24000)
+    split = tmp_path / "test.txt"
+    split.write_text("\n".join(n + ".wav" for n in names) + "\n")
+    entries = read_split_file(str(split), str(tmp_path / "data"), vocoders, check_exists=True)
+    fold = build_lovo_splits({"train": [], "dev": [], "test": entries}, "wavernn", vocoders)
+    write_split(fold["test"], str(tmp_path / "lovo" / "wavernn" / "test.txt"))
+
+    spec = importlib.util.spec_from_file_location("evaluate_script", repo / "scripts" / "evaluate.py")
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    common = [
+        f"model.baseline.repo_dir={baseline_dir}", f"model.baseline.weights={random_baseline_weights}",
+        "audio.sample_rate=24000", "audio.num_samples=24000", f"data.root={tmp_path / 'data'}",
+        f"data.split_files.test={split}", "data.num_workers=0", f"output_dir={tmp_path / 'exp'}",
+        f"data.lovo.split_dir={tmp_path / 'lovo'}",
+    ]
+    run_dir = script.main(["--override", *common])
+    res = read_results(run_dir)
+    assert res["metrics"]["n_clips"] == 14 and len(res["scores"]["score"]) == 14
+    assert set(res["metrics"]["per_vocoder"]) == set(vocoders)
+    assert res["config"]["model"]["name"] == "baseline_only"
+    with pytest.raises(SystemExit):  # never overwrite silently
+        script.main(["--override", *common])
+    lovo_dir = script.main(["--config", "configs/model/baseline_only.yaml", "configs/eval/lovo.yaml",
+                            "--override", *common, "data.lovo.held_out=wavernn", "eval.split=test"])
+    lovo = read_results(lovo_dir)
+    assert lovo_dir.endswith("lovo-wavernn")
+    assert lovo["metrics"]["held_out"] == "wavernn" and lovo["metrics"]["n_clips"] == 4
+    assert set(lovo["metrics"]["per_vocoder"]) == {"wavernn"}
