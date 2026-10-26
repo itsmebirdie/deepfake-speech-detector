@@ -17,6 +17,6 @@ data:
     per_vocoder_test: null    # null = always report on the FULL official test split
     manifest_dir: data/subsets
   num_workers: 4
-  lovo:
-    held_out: null      # vocoder name for leave-one-vocoder-out runs
+  lovo:                   # leave-one-vocoder-out (PR-13, DATASET_NOTES.md section 10)
+    held_out: null        # a name from `vocoders` -> loader reads data/splits/lovo/<name>/<split>.txt
     split_dir: data/splits/lovo

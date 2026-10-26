@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from .collate import collate_fn
 from .splits import Entry, read_split_file
-from .subset import load_manifest
+from .subset import build_balanced_subset, load_manifest
 from .transforms import pad_or_crop
 
 
@@ -78,6 +78,8 @@ def build_dataloader(cfg: Dict, split: str, train: bool, entries: Optional[List[
 
     With `data.subset.enabled: true`, a split whose `per_vocoder_<split>` is set reads
     `<manifest_dir>/<split>.txt`; a split left at null uses the full official split.
+    With `data.lovo.held_out: <vocoder>`, splits come from `<lovo.split_dir>/<vocoder>/<split>.txt`
+    (and, if the subset is also enabled, train/dev are balanced with the same rule as PR-09).
 
     Needs `cfg["data"]` (configs/data/librisevoc.yaml) and `cfg["audio"]` (configs/default.yaml).
     Batch size comes from `cfg["train"]["batch_size"]` (default 32). Shuffling happens only when
@@ -86,10 +88,17 @@ def build_dataloader(cfg: Dict, split: str, train: bool, entries: Optional[List[
     data_cfg = cfg["data"]
     audio_cfg = cfg["audio"]
     if entries is None:
-        if data_cfg.get("lovo", {}).get("held_out"):
-            raise NotImplementedError("LOVO splits are added in PR-13")
         subset = data_cfg.get("subset", {})
-        if subset.get("enabled") and subset.get(f"per_vocoder_{split}") is not None:
+        use_subset = bool(subset.get("enabled")) and subset.get(f"per_vocoder_{split}") is not None
+        held_out = data_cfg.get("lovo", {}).get("held_out")
+        if held_out:
+            # leave-one-vocoder-out fold built by scripts/make_lovo_splits.py (DATASET_NOTES.md section 10)
+            lovo_dir = data_cfg["lovo"].get("split_dir", "data/splits/lovo")
+            entries = load_manifest(os.path.join(lovo_dir, held_out, f"{split}.txt"))
+            if use_subset and split != "test":
+                # same balanced rule as PR-09, applied to the fold's 5 vocoders (deterministic by seed)
+                entries = build_balanced_subset(entries, subset[f"per_vocoder_{split}"], cfg.get("seed", 0))
+        elif use_subset:
             # balanced subset manifest built by scripts/make_subset.py (DATASET_NOTES.md section 9)
             entries = load_manifest(os.path.join(subset.get("manifest_dir", "data/subsets"), f"{split}.txt"))
         else:
