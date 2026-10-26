@@ -213,9 +213,74 @@ def test_committed_manifests_match_config():
         assert load_manifest(str(path)) == build_balanced_subset(entries, n, cfg["seed"])
 
 
+def official_entries():
+    return {split: read_split_file(str(SPLITS / f"{split}.txt"), "unused", VOCODERS) for split in SPLIT_SIZES}
+
+
 def test_lovo_split_excludes_held_out():
     """Held-out vocoder absent from train/dev, only held-out fakes + real in test."""
-    pytest.skip("not implemented yet (PR-13)")
+    from phasecon.data.splits import build_lovo_splits
+
+    official = official_entries()
+    for held_id, held_out in enumerate(VOCODERS, start=1):
+        folds = build_lovo_splits(official, held_out, VOCODERS)
+        for split in ("train", "dev"):
+            ids = {e.vocoder_id for e in folds[split]}
+            assert held_id not in ids
+            assert ids == set(range(7)) - {held_id}  # real + the other 5 vocoders
+            assert len(folds[split]) == SPLIT_SIZES[split] * 6
+        assert {e.vocoder_id for e in folds["test"]} == {0, held_id}
+        assert len(folds["test"]) == SPLIT_SIZES["test"] * 2  # every real test clip + its held-out fake
+        utts = {split: {e.utt_id for e in folds[split]} for split in folds}
+        assert not utts["train"] & utts["test"]
+        assert not utts["dev"] & utts["test"]
+        assert not utts["train"] & utts["dev"]
+    with pytest.raises(ValueError):
+        build_lovo_splits(official, "hifigan", VOCODERS)
+
+
+def test_committed_lovo_folds_match_protocol():
+    """data/splits/lovo/<vocoder>/*.txt are exactly what build_lovo_splits produces."""
+    from phasecon.data.splits import build_lovo_splits
+    from phasecon.data.subset import load_manifest
+
+    official = official_entries()
+    for held_out in VOCODERS:
+        folds = build_lovo_splits(official, held_out, VOCODERS)
+        for split, entries in folds.items():
+            assert load_manifest(str(SPLITS / "lovo" / held_out / f"{split}.txt")) == entries
+
+
+def test_lovo_loader_with_and_without_subset(tmp_path):
+    """data.lovo.held_out makes the loader read the fold; with the subset on, train is balanced too."""
+    from phasecon.data.splits import build_lovo_splits, write_split
+
+    names = [f"1_2_00000{i}_000001" for i in range(5)]
+    make_fake_librisevoc(tmp_path, names, [4.0] * 5)
+    split = tmp_path / "split.txt"
+    split.write_text("\n".join(n + ".wav" for n in names) + "\n")
+    entries = read_split_file(str(split), str(tmp_path), VOCODERS, check_exists=True)
+    folds = build_lovo_splits({"train": entries, "dev": [], "test": []}, "wavernn", VOCODERS)
+    write_split(folds["train"], str(tmp_path / "lovo" / "wavernn" / "train.txt"))
+    cfg = {
+        "seed": 3,
+        "audio": {"sample_rate": 24000, "num_samples": 24000},
+        "data": {
+            "root": str(tmp_path),
+            "vocoders": VOCODERS,
+            "num_workers": 0,
+            "lovo": {"held_out": "wavernn", "split_dir": str(tmp_path / "lovo")},
+            "subset": {"enabled": False},
+        },
+        "train": {"batch_size": 8},
+    }
+    loader = build_dataloader(cfg, "train", train=False)
+    ids = [v.item() for b in loader for v in b["vocoder_id"]]
+    assert len(ids) == 30 and 4 not in ids  # 5 utterances x (real + 5 kept vocoders); wavernn is id 4
+    cfg["data"]["subset"] = {"enabled": True, "per_vocoder_train": 1}
+    loader = build_dataloader(cfg, "train", train=False)
+    ids = [v.item() for b in loader for v in b["vocoder_id"]]
+    assert sorted(ids) == [0] * 5 + [1, 2, 3, 5, 6]  # balanced: 5 real + one fake per kept vocoder
 
 
 def test_collate_shapes():

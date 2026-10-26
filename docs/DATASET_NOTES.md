@@ -158,6 +158,20 @@ Sources: [Sun et al., CVPRW 2023, arXiv 2304.13085](https://arxiv.org/pdf/2304.1
 
 **Why these counts:** 12,000 training clips is about 22% of the full 55,440, so an epoch is about 4.6x faster. They are a starting point; if the slowest GPU in the team needs less, lower `per_vocoder_train` and re-run the script (the maximum is 1,320 for train and 440 for dev).
 
-## Later items
+## 10. Leave-one-vocoder-out protocol (PR-13)
 
-- LOVO protocol (exact definition): _later_ (PR-13)
+**Question it answers:** can a detector catch a vocoder it has **never heard** during training? This matters because real attackers will use new vocoders.
+
+**Protocol (fixed; changing it after PR-26 invalidates the baseline LOVO runs):** one fold per vocoder, six folds in total. For the fold that holds out vocoder V:
+
+| Split | Utterances | What it contains | Clips |
+|---|---|---|---|
+| train | official train (7,920) | bona fide + the 5 vocoders other than V | 47,520 (7,920 real, 39,600 fake) |
+| dev | official dev (2,640) | bona fide + the 5 vocoders other than V | 15,840 (2,640 real, 13,200 fake) |
+| test | official test (2,641) | bona fide + **only V's fakes** | 5,282 (2,641 real, 2,641 fake) |
+
+- Train, dev and test never share an utterance (the official splits guarantee it; `build_lovo_splits` asserts it).
+- `vocoder_id` keeps its global meaning (1 to 6 in `data.vocoders` order), so V's id never appears in train/dev.
+- No randomness: each fold is an exact filter of the official split files. Files: `data/splits/lovo/<V>/{train,dev,test}.txt`, built by `python scripts/make_lovo_splits.py` and checked by `test_committed_lovo_folds_match_protocol`.
+- **Reporting:** for each fold, the EER on its test split (V vs real); then the mean over the six folds. Each model is trained from scratch once per fold with the same settings and seed. The released baseline weights saw every vocoder, so the baseline is **retrained** per fold (PR-26).
+- **Use it:** `--override data.lovo.held_out=<V>`. With `data.subset.enabled: true` too, train/dev are balanced with the PR-09 rule over the fold's 5 vocoders (1,000 fakes per vocoder + 5,000 real for train; 200 + 1,000 for dev), deterministic by seed. Test is never shrunk.

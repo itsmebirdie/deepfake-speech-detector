@@ -57,13 +57,37 @@ def read_split_file(
 def build_lovo_splits(
     entries_by_split: Dict[str, List[Entry]], held_out: str, vocoders: List[str]
 ) -> Dict[str, List[Entry]]:
-    """LOVO protocol (step A7), to be written down in docs/DATASET_NOTES.md:
+    """LOVO protocol (step A7), written down in docs/DATASET_NOTES.md section 10:
     - train/dev: bona fide + all vocoders EXCEPT `held_out`
     - test: bona fide test clips + `held_out` fakes only (report pooled and per-vocoder EER)
     Must assert zero overlap of utt_id between train/dev and test where the official split guarantees it.
+
+    `vocoder_id` keeps its global meaning (1..6 in `vocoders` order), so a held-out id simply never
+    appears in train/dev and per-vocoder results stay comparable across folds.
     """
-    raise NotImplementedError("TODO(A7)")
+    if held_out not in vocoders:
+        raise ValueError(f"held_out={held_out!r} is not one of {vocoders}")
+    held_id = vocoders.index(held_out) + 1
+    folds = {
+        "train": [e for e in entries_by_split["train"] if e.vocoder_id != held_id],
+        "dev": [e for e in entries_by_split["dev"] if e.vocoder_id != held_id],
+        "test": [e for e in entries_by_split["test"] if e.vocoder_id in (0, held_id)],
+    }
+    for split in ("train", "dev"):
+        if any(e.vocoder_id == held_id for e in folds[split]):
+            raise AssertionError(f"held-out vocoder {held_out} leaked into {split}")
+    if any(e.vocoder_id not in (0, held_id) for e in folds["test"]):
+        raise AssertionError("LOVO test may only hold bona fide clips and held-out fakes")
+    utts = {split: {e.utt_id for e in entries} for split, entries in folds.items()}
+    for a, b in (("train", "dev"), ("train", "test"), ("dev", "test")):
+        overlap = utts[a] & utts[b]
+        if overlap:
+            raise AssertionError(f"{len(overlap)} utterances appear in both {a} and {b}, e.g. {sorted(overlap)[:3]}")
+    return folds
 
 
-def write_split(entries: List[Entry], out_path: str) -> None:
-    raise NotImplementedError("TODO(A7)")
+def write_split(entries: List[Entry], out_path: str, header: str = "") -> None:
+    """Write entries as a manifest (same format as data/subsets/*.txt; read back with load_manifest)."""
+    from .subset import save_manifest  # local import: subset.py imports this module
+
+    save_manifest(entries, out_path, header)
