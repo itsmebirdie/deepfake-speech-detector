@@ -2,5 +2,5 @@ seed: 1234
 device: cuda            # cuda | cpu
 output_dir: experiments
 audio:
-  sample_rate: 16000    # FACT: LibriSeVoc and the baseline are 24 kHz (docs/DATASET_NOTES.md). Change pending an INTERFACES.md PR
-  num_samples: 64000    # 4 s at sample_rate (baseline input is 4 s). Becomes 96000 if sample_rate moves to 24000
+  sample_rate: 24000    # LibriSeVoc and the released baseline are 24 kHz (docs/DATASET_NOTES.md sections 0 and 7)
+  num_samples: 96000    # 4 s at 24 kHz = the baseline's input length; T_b = 43 (docs/INTERFACES.md section 4)

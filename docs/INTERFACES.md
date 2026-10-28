@@ -1,7 +1,7 @@
 # Interfaces (the contract between the three members)
 
 Everything below is the agreed shape of data crossing a member boundary. If you must change one, open a PR
-that edits this file first and tag the other two members. Conventions: waveforms are 16 kHz mono float32;
+that edits this file first and tag the other two members. Conventions: waveforms are 24 kHz mono float32 (the native rate of LibriSeVoc and of the released baseline);
 `B` = batch, `T` = samples (`audio.num_samples`); label **0 = bona fide, 1 = synthetic**; `vocoder_id` **0 = bona fide, 1..6 = vocoders**.
 
 ## 1. Dataset -> everyone (owner A)
@@ -21,10 +21,10 @@ Until B7 lands, C develops against a `DummyPhaseBranch` that returns random tens
 - **C_b = 1024**: the GRU hidden size. `H_b` is the GRU output at every time step, before the baseline's pooling.
 - **T_b = 43** for the native input of 96,000 samples (4 s at 24 kHz). In general `T_b = floor(...floor(floor((T - 1024) / 3) / 3).../ 3)` with seven divisions by 3
   (Sinc conv with a 1025-tap kernel and no padding, then one max-pool of 3 after the front-end and one in each of the six residual blocks).
-  `BaselineRawNet2.feature_length(T)` computes it; it is 28 for T = 64,000 (4 s at 16 kHz) and 1 for the minimum input of 3,211 samples.
+  `BaselineRawNet2.feature_length(T)` computes it; it would be 28 for T = 64,000 (4 s at 16 kHz, no longer used) and is 1 for the minimum input of 3,211 samples.
   **PR-19: set `model.phase_branch.encoder.t_out` from this** (the dummy branch uses 64 until it is set).
 - **Pooling:** the baseline's heads read only the LAST time step, `H[:, -1, :]`. PhaseConNet pools the same way by default (`model.heads.pooling: last`; `mean` is available), so with the phase branch off it reproduces the baseline.
-- **Sample rate:** the released weights and the Sinc front-end assume **24 kHz / 96,000 samples**. `configs/default.yaml` still says 16 kHz / 64,000 (DATASET_NOTES section 7, decision pending); `build_model` warns while they differ. Real weights must be run at 24 kHz.
+- **Sample rate:** 24 kHz / 96,000 samples everywhere (decision recorded in DATASET_NOTES section 7). The released weights and the Sinc front-end were built for it, and the data needs no resampling. `build_model` still warns if a config says otherwise.
 - **Conventions:** `logits_bin` of the wrapper is the baseline's own log-softmax output with the two columns swapped to the repo order `[bona fide, synthetic]`. Log-probabilities are logits up to a per-row constant; cross-entropy and the score `logits_bin[:,1] - logits_bin[:,0]` do not depend on that constant. The baseline's binary target is `y == 0` (1 = bona fide), the opposite of this repo; `BaselineRawNet2.repo_label_to_baseline` converts.
 
 ## 5. Model -> trainer / evaluator (owner C -> A)
