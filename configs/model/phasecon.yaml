@@ -21,6 +21,7 @@ model:
     encoder:
       channels: [16, 32, 64]
       out_dim: 128
+      t_out: 43              # T_d = T_b of RawNet2 at 96,000 samples (INTERFACES.md section 4)
   fusion:
     type: gated_cross_attention   # gated_cross_attention | concat (ablation iii)
     dim: 256
