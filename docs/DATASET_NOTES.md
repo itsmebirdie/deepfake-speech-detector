@@ -98,7 +98,7 @@ Checked on the extracted data: every name in each split file exists in `gt/`, al
 
 ## 7. Decisions needed from the team
 
-1. **Sample rate.** The data and the pretrained baseline are 24 kHz, but `docs/INTERFACES.md` and `configs/default.yaml` say 16 kHz. Option (a): use 24 kHz and `num_samples: 96000`, which matches the released weights and needs no resampling. Option (b): resample to 16 kHz, which changes the input the pretrained SincConv front-end was trained on. Recommended: (a). Per the interface rule, this needs its own `INTERFACES.md` PR before any config change, so PR-02 keeps `sample_rate: 16000` and only corrects `num_samples` from 64,600 to 64,000 (4 s at 16 kHz). Moving to 24 kHz / 96,000 happens in that PR.
+1. **Sample rate.** The data and the pretrained baseline are 24 kHz, but `docs/INTERFACES.md` and `configs/default.yaml` say 16 kHz. Option (a): use 24 kHz and `num_samples: 96000`, which matches the released weights and needs no resampling. Option (b): resample to 16 kHz, which changes the input the pretrained SincConv front-end was trained on. Recommended: (a). **Decided: (a)** in the INTERFACES.md PR that moved `configs/default.yaml` to `sample_rate: 24000`, `num_samples: 96000` (PR-02 had kept 16 kHz until that PR).
 2. **`vocoder_id` order:** confirm the order in section 3.
 3. **Split caveat:** agree how PR-06 reports the baseline given section 4.
 
