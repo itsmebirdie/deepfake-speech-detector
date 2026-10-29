@@ -1,0 +1,57 @@
+{
+  "n_clips": 18487,
+  "eer": 0.09393537801337878,
+  "eer_threshold": -1.575113296508789,
+  "auc": 0.965930697121093,
+  "accuracy": 0.8596851841834803,
+  "accuracy_at_eer": 0.906042083626332,
+  "per_vocoder": {
+    "wavegrad": {
+      "eer": 0.0018932222642938047,
+      "auc": 0.998782631560309,
+      "caught": 0.9996213555471413,
+      "n_fake": 2641
+    },
+    "diffwave": {
+      "eer": 0.0015145778114350548,
+      "auc": 0.9997964122972134,
+      "caught": 0.9992427110942824,
+      "n_fake": 2641
+    },
+    "parallel_wave_gan": {
+      "eer": 0.00227186671715261,
+      "auc": 0.9993711720673084,
+      "caught": 1.0,
+      "n_fake": 2641
+    },
+    "wavernn": {
+      "eer": 0.2711094282468762,
+      "auc": 0.8109470254761335,
+      "caught": 0.17606967057932602,
+      "n_fake": 2641
+    },
+    "wavenet": {
+      "eer": 0.054524801211662255,
+      "auc": 0.9867503115823766,
+      "caught": 0.8602801968951155,
+      "n_fake": 2641
+    },
+    "melgan": {
+      "eer": 0.0018932222642938047,
+      "auc": 0.9999366297432171,
+      "caught": 1.0,
+      "n_fake": 2641
+    }
+  },
+  "bona_fide_correct": 0.9825823551684968,
+  "run_name": "baseline_pipeline_frozen",
+  "split": "test",
+  "protocol": "in_distribution",
+  "held_out": null,
+  "checkpoint": "experiments/checkpoints/baseline_pipeline_frozen_train/best.pt",
+  "device": "cuda",
+  "minutes": 0.9,
+  "git_hash": "fb5c234a7a0f643141ef8a031ad322770464767f",
+  "git_dirty": true,
+  "created": "2026-10-28T18:13:03+00:00"
+}

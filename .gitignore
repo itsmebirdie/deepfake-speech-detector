@@ -19,7 +19,7 @@ weights/
 *.flac
 experiments/checkpoints/*
 experiments/logs/*
-experiments/results/*
+# experiments/results/*
 !experiments/*/.gitkeep
 .ipynb_checkpoints/
 # Small manifests (data/splits/*.txt, data/subsets/*.txt) ARE committed

@@ -1,0 +1,232 @@
+{
+  "batch_source": "real LibriSeVoc train batch (8 clips, labels [0, 1, 1, 1, 1, 1, 1, 1])",
+  "config": {
+    "seed": 1234,
+    "device": "cuda",
+    "output_dir": "experiments/gates/runs",
+    "audio": {
+      "sample_rate": 24000,
+      "num_samples": 96000
+    },
+    "data": {
+      "root": "data/raw/LibriSeVoc",
+      "split_files": {
+        "train": "data/splits/train.txt",
+        "dev": "data/splits/dev.txt",
+        "test": "data/splits/test.txt"
+      },
+      "vocoders": [
+        "wavegrad",
+        "diffwave",
+        "parallel_wave_gan",
+        "wavernn",
+        "wavenet",
+        "melgan"
+      ],
+      "subset": {
+        "enabled": false,
+        "per_vocoder_train": 1000,
+        "per_vocoder_dev": 200,
+        "per_vocoder_test": null,
+        "manifest_dir": "data/subsets"
+      },
+      "num_workers": 4,
+      "lovo": {
+        "held_out": null,
+        "split_dir": "data/splits/lovo"
+      }
+    },
+    "train": {
+      "epochs": 50,
+      "batch_size": 8,
+      "amp": true,
+      "grad_clip": 5.0,
+      "optimizer": {
+        "name": "adam",
+        "lr_encoder": 1e-05,
+        "lr_new": 0.0001,
+        "weight_decay": 0.0001
+      },
+      "scheduler": {
+        "name": "cosine",
+        "warmup_epochs": 2
+      },
+      "early_stopping": {
+        "metric": "dev_eer",
+        "mode": "min",
+        "patience": 8
+      },
+      "loss": {
+        "beta": 0.5,
+        "mu": 0.1
+      },
+      "checkpoint": {
+        "save_best": true,
+        "save_last": true
+      },
+      "overfit_batch": true,
+      "overfit_lr": 0.0003,
+      "overfit_steps": 100
+    },
+    "model": {
+      "name": "phasecon_net",
+      "baseline": {
+        "repo_dir": "third_party/Synthetic-Voice-Detection-Vocoder-Artifacts",
+        "weights": "weights/baseline_pretrained.pth",
+        "freeze_encoder": false,
+        "num_vocoder_classes": 7
+      },
+      "phase_branch": {
+        "enabled": true,
+        "stft_resolutions": [
+          [
+            512,
+            128,
+            512
+          ],
+          [
+            1024,
+            256,
+            1024
+          ],
+          [
+            2048,
+            512,
+            2048
+          ]
+        ],
+        "ulcp": {
+          "num_steps": 5,
+          "init": "zeros",
+          "learnable_momentum": true,
+          "momentum_init": 0.99,
+          "correction_channels": 8,
+          "learnable": true
+        },
+        "discrepancy": {
+          "tau": 0.001,
+          "use_if_channel": true,
+          "mode": "residual"
+        },
+        "encoder": {
+          "channels": [
+            16,
+            32,
+            64
+          ],
+          "out_dim": 128,
+          "t_out": 43
+        }
+      },
+      "fusion": {
+        "type": "gated_cross_attention",
+        "dim": 256,
+        "num_heads": 4,
+        "dropout": 0.1
+      },
+      "heads": {
+        "vocoder_head": true,
+        "gradient_reversal": false
+      }
+    }
+  },
+  "g3_interface": {
+    "real_branch": true,
+    "keys_ok": true,
+    "H_d_shape": [
+      8,
+      43,
+      128
+    ],
+    "H_b_shape": [
+      8,
+      43,
+      1024
+    ],
+    "cons_shape": [
+      8
+    ],
+    "shapes_ok": true,
+    "finite": true,
+    "cons_range": [
+      0.6131755709648132,
+      0.9619444608688354
+    ],
+    "fusion_shape_equals_H_b": true,
+    "fusion_finite": true,
+    "grads_reach_both_streams": true,
+    "T_b_differs_from_T_d": false,
+    "status": "PASS"
+  },
+  "g4_backward": {
+    "loss": 1.9583733081817627,
+    "parts": {
+      "bin": 1.2283885478973389,
+      "voc": 1.2754379510879517,
+      "cons": 0.9226589202880859
+    },
+    "loss_finite": true,
+    "grads_finite": true,
+    "params_without_grad": 25,
+    "dead_in_baseline_too": 10,
+    "dead_last_ulcp_step": 15,
+    "unexpected_without_grad": [],
+    "note": "expected without grad: RawNet2's bypassed bn1 layers (also dead in the plain baseline) and the K-th ULCP step's alpha and g_theta (Y_K = T_K is taken before they act). Anything else FAILs.",
+    "status": "PASS"
+  },
+  "g4_amp": {
+    "steps": 30,
+    "dtype": "float16 + GradScaler",
+    "nonfinite_skipped": 0,
+    "initial_loss": 1.959601879119873,
+    "final_loss": 0.092613585293293,
+    "phase_branch_saw": {
+      "in": "torch.float32",
+      "autocast": false,
+      "out": [
+        "torch.float32"
+      ]
+    },
+    "status": "PASS"
+  },
+  "g4_overfit": {
+    "steps": 100,
+    "lr": 0.0003,
+    "amp": true,
+    "beta": 0.5,
+    "mu": 0.1,
+    "initial_loss": 1.963170051574707,
+    "final_loss": 0.09206955134868622,
+    "min_loss": 0.09206955134868622,
+    "accuracy": 1.0,
+    "nonfinite_skipped": 0,
+    "classification_loss_train_mode": 0.00012647706171264872,
+    "parts_train_mode": {
+      "bin": 5.6115568440873176e-05,
+      "voc": 0.0001407229865435511,
+      "cons": 0.9193958044052124
+    },
+    "parts_eval_mode": {
+      "bin": 5.553445953410119e-05,
+      "voc": 0.00014189988723956048,
+      "cons": 0.9193958044052124
+    },
+    "note": "pass = classification loss < 0.05 in train mode; L_cons keeps a floor on one batch (total ~ mu*cons). Eval-mode losses can be large on a tiny batch (BatchNorm running stats): informational only.",
+    "status": "PASS"
+  },
+  "profile": {
+    "batch_size": 8,
+    "num_samples": 96000,
+    "K": 5,
+    "R": 3,
+    "amp": true,
+    "step_time_s_median": 0.9524334000016097,
+    "step_time_s_min": 0.730975499998749,
+    "timed_steps": 5,
+    "device": "NVIDIA GeForce RTX 5060 Laptop GPU",
+    "torch": "2.15.0+cu134",
+    "gpu_peak_memory_gb": 6.402541160583496,
+    "process_peak_rss_gb": null,
+    "status": "INFO"
+  }
+}
