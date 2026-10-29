@@ -1,9 +1,11 @@
 """Owner: Member C (PR-18; ablation configs of PR-28). Tests for models/phasecon_net.py and build_model.
 
-All tests here use the DummyPhaseBranch (`impl: dummy`) because Member B's PhaseBranch (PR-21) is not
-merged. The tests that need the real branch (ULCP / discrepancy encoder updating, overfitting the
-full model, B's ablation configs) stay skipped with the reason below.
+PR-23: the default branch is now Member B's real PhaseBranch (K=5 ULCP steps, R=3 resolutions); the
+real_* / backward / overfit / autocast tests below run on it. The older plumbing tests still ask for the
+DummyPhaseBranch explicitly (`impl=dummy`) because they only check wiring and are cheap. B's own ablation
+configs (a1, a2, a6, PR-27) stay skipped with the reason below.
 """
+import math
 import warnings
 from pathlib import Path
 
@@ -17,6 +19,7 @@ from phasecon.models import build_model  # noqa: E402
 from phasecon.models.baseline.rawnet2_encoder import NATIVE_NUM_SAMPLES  # noqa: E402
 from phasecon.models.dummy_phase_branch import DummyPhaseBranch  # noqa: E402
 from phasecon.models.fusion import ConcatFusion, GatedCrossAttentionFusion  # noqa: E402
+from phasecon.models.phase_branch import PhaseBranch  # noqa: E402
 from phasecon.utils.config import load_many  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
@@ -109,7 +112,8 @@ def test_build_model_validation(baseline_dir, random_baseline_weights):
     cfg["model"]["name"] = "nope"
     with pytest.raises(ValueError):
         build_model(cfg)
-    for bad in ("model.heads.pooling=max", "model.phase_branch.impl=fake", "model.fusion.type=sum"):
+    for bad in ("model.heads.pooling=max", "model.phase_branch.impl=fake", "model.phase_branch.impl=auto",
+                "model.fusion.type=sum"):
         with pytest.raises(ValueError):
             build_model(make_cfg(baseline_dir, random_baseline_weights, overrides=[bad]))
     with pytest.raises(ValueError):  # gradient reversal needs the vocoder head
@@ -128,21 +132,31 @@ def test_audio_config_mismatch_warns(baseline_dir, random_baseline_weights):
         build_model(cfg)
 
 
-def test_auto_impl_falls_back_loudly_while_phase_branch_is_a_stub(baseline_dir, random_baseline_weights):
-    cfg = make_cfg(baseline_dir, random_baseline_weights, overrides=["model.phase_branch.impl=auto"])
-    try:
-        from phasecon.models.phase_branch import PhaseBranch
-
-        PhaseBranch({})
-        pytest.skip("PhaseBranch is implemented now; the fallback is no longer reachable")
-    except NotImplementedError:
-        pass
-    with pytest.warns(RuntimeWarning, match="RANDOM"):
+def test_real_phase_branch_is_the_default_and_dummy_must_be_asked_for(baseline_dir, random_baseline_weights):
+    """PR-23: no silent fallback. Without `impl` the model gets Member B's PhaseBranch and no warning;
+    the random-feature dummy exists only for an explicit `impl=dummy` (and warns every time)."""
+    cfg = make_cfg(baseline_dir, random_baseline_weights)
+    del cfg["model"]["phase_branch"]["impl"]  # what every shipped config looks like
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
         model = build_model(cfg)
-    assert model.phase_branch_is_dummy
-    cfg["model"]["phase_branch"]["impl"] = "real"  # explicit 'real' must not fall back
-    with pytest.raises(NotImplementedError):
+    assert isinstance(model.phase_branch, PhaseBranch) and not model.phase_branch_is_dummy
+    cfg["model"]["phase_branch"]["impl"] = "dummy"
+    with pytest.warns(RuntimeWarning, match="RANDOM"):
+        assert build_model(cfg).phase_branch_is_dummy
+    cfg["model"]["phase_branch"]["impl"] = "auto"  # the old fallback mode is gone
+    with pytest.raises(ValueError, match="real or dummy"):
         build_model(cfg)
+
+
+def test_no_shipped_config_or_script_uses_the_dummy_branch():
+    """G4: DummyPhaseBranch is not used by any config or script (tests may ask for it explicitly)."""
+    for path in sorted(CFG.rglob("*.yaml")):
+        assert "dummy" not in path.read_text().lower(), f"{path.relative_to(REPO)} mentions the dummy branch"
+    for path in sorted((REPO / "scripts").glob("*.py")):  # scripts may mention it in messages, never build it
+        text = path.read_text()
+        assert "DummyPhaseBranch(" not in text and "import DummyPhaseBranch" not in text, path
+        assert "models.dummy_phase_branch" not in text and "from .dummy_phase_branch" not in text, path
 
 
 def test_pooling_options(baseline_dir, random_baseline_weights):
@@ -227,14 +241,138 @@ def test_phase_stream_runs_in_float32_under_autocast(baseline_dir, random_baseli
     assert out["logits_bin"].shape == (2, 2)
 
 
-def test_backward_updates_new_modules():
-    """After one step, ULCP/fusion/encoder params change; frozen ones do not."""
-    pytest.skip(NEEDS_REAL_BRANCH + " (covered for the dummy branch above; PR-23 adds the real one)")
+def real_cfg(baseline_dir, weights, overrides=()):
+    """The shipped phasecon.yaml with its default (real) phase branch: K=5 ULCP steps, R=3 resolutions."""
+    cfg = make_cfg(baseline_dir, weights, overrides=["model.fusion.dropout=0.0", *overrides])
+    del cfg["model"]["phase_branch"]["impl"]
+    return cfg
 
 
-def test_overfit_single_batch():
-    """Loss on one batch falls near zero (slow; marker)."""
-    pytest.skip(NEEDS_REAL_BRANCH + " (the trainer's overfit_batch is tested on the dummy branch in test_trainer.py)")
+@pytest.fixture(scope="module")
+def real_model(baseline_dir, random_baseline_weights):
+    return build_model(real_cfg(baseline_dir, random_baseline_weights)).eval()
+
+
+def test_real_phase_branch_matches_interface_and_feeds_the_fusion(real_model):
+    """G3 on tensors: INTERFACES.md section 3 keys/shapes from the real PhaseBranch, and the fusion block
+    accepts them: output shape equals H_b, finite, and gradients reach both the baseline and the phase stream."""
+    model = real_model
+    wav, _ = batch_for(4)
+    assert not model.phase_branch_is_dummy and isinstance(model.phase_branch, PhaseBranch)
+    phase = model.phase_branch(wav)
+    assert {"H_d", "cons_per_sample"} <= set(phase)
+    assert phase["H_d"].shape == (4, 8, 128)  # [B, T_d = model.phase_branch.encoder.t_out, C_d = encoder.out_dim]
+    assert phase["cons_per_sample"].shape == (4,)
+    assert phase["H_d"].dtype == torch.float32 and torch.isfinite(phase["H_d"]).all()
+    assert (phase["cons_per_sample"] >= 0).all() and (phase["cons_per_sample"] <= 2).all()  # w in (0,1), 1-cos in [0,2]
+
+    h_b = model.baseline.forward_features(wav).detach().requires_grad_(True)
+    h_d = phase["H_d"].detach().requires_grad_(True)
+    assert h_b.shape[1] == 5 and h_d.shape[1] == 8  # T_b != T_d: the fusion must cope
+    fused = model.fusion(h_b, h_d)
+    assert fused.shape == h_b.shape and torch.isfinite(fused).all()
+    # a freshly built gate is ~closed (bias -3), so give the gradient something to flow through
+    fused.square().sum().backward()
+    assert h_b.grad is not None and torch.isfinite(h_b.grad).all()
+    assert h_d.grad is not None and torch.isfinite(h_d.grad).all()
+
+
+def test_backward_updates_new_modules(baseline_dir, random_baseline_weights):
+    """After two steps the ULCP, the discrepancy encoder, the fusion, the heads and the baseline encoder have
+    all changed and every gradient is finite; with a frozen encoder only the baseline stays put.
+
+    Two steps because every ULCP correction ends in a zero-initialised conv: on step 1 only that last conv
+    and the momenta get gradient, the first conv of g_theta starts moving on step 2.
+    Not asserted: the LAST unrolled step's alpha and g_theta. ULCP returns Y_K = T_K, which is computed before
+    step K applies them (models/ulcp.py), so they can never receive a gradient. Reported to Member B."""
+    model = build_model(real_cfg(baseline_dir, random_baseline_weights))
+    k = len(model.phase_branch.ulcp[0].steps)
+    assert k == 5 and len(model.phase_branch.ulcp) == 3  # the K=5, R=3 setting of PR-23
+    before = snapshot(model)
+    for _ in range(2):
+        loss = train_step(model, mu=0.1)
+        assert torch.isfinite(loss)
+    assert all(torch.isfinite(p.grad).all() for p in model.parameters() if p.grad is not None)
+    moved = changed(before, model)
+    for part in (model.fusion, model.binary_head, model.vocoder_head, model.baseline, model.phase_branch.encoder):
+        sub = {n for n, p in model.named_parameters() if any(p is q for q in part.parameters())}
+        assert moved & sub, f"{type(part).__name__} did not change"
+    for r in range(3):
+        for s in range(k - 1):  # every unrolled step except the last (see docstring)
+            step = f"phase_branch.ulcp.{r}.steps.{s}"
+            assert f"{step}.alpha" in moved, f"{step}: momentum did not change"
+            assert f"{step}.correction.0.weight" in moved, f"{step}: g_theta first conv did not change"
+            assert f"{step}.correction.2.weight" in moved, f"{step}: g_theta last conv did not change"
+    own_heads = {n for n, p in model.named_parameters() if any(p is q for q in model.baseline.head_parameters())}
+    assert not moved & own_heads  # the baseline's own heads are unused
+
+    frozen = build_model(real_cfg(baseline_dir, random_baseline_weights, ["model.baseline.freeze_encoder=true"]))
+    before = snapshot(frozen)
+    train_step(frozen, mu=0.1)
+    moved = changed(before, frozen)
+    assert not any(n.startswith("baseline.") for n in moved)
+    assert any(n.startswith("phase_branch.") for n in moved) and any(n.startswith("fusion.") for n in moved)
+
+
+def test_real_phase_stream_stays_float32_and_finite_under_autocast(baseline_dir, random_baseline_weights):
+    """AMP guard on CPU (bfloat16 autocast; the trainer enables AMP on CUDA only, scripts/gate_check.py does the
+    fp16 + GradScaler run on a GPU): the phase stream sees fp32 and returns fp32, nothing becomes NaN/inf,
+    and a backward pass gives finite gradients."""
+    model = build_model(real_cfg(baseline_dir, random_baseline_weights)).train()
+    seen = {}
+
+    def probe(_, inputs, output):
+        seen["in"] = inputs[0].dtype
+        seen["out"] = {k: v.dtype for k, v in output.items()}
+        seen["autocast"] = torch.is_autocast_enabled("cpu")
+
+    model.phase_branch.register_forward_hook(probe)
+    wav, batch = batch_for(4)
+    with torch.autocast("cpu", dtype=torch.bfloat16):
+        out = model(wav)
+    assert seen["in"] == torch.float32 and seen["autocast"] is False
+    assert set(seen["out"].values()) == {torch.float32}
+    assert all(torch.isfinite(v).all() for v in out.values())
+    loss, _ = total_loss(out, batch, beta=0.5, mu=0.1)
+    loss.backward()
+    assert torch.isfinite(loss)
+    assert all(torch.isfinite(p.grad).all() for p in model.parameters() if p.grad is not None)
+
+
+def test_overfit_single_batch(tmp_path, baseline_dir, random_baseline_weights):
+    """G4: the full PhaseCon-Net (real PhaseBranch, K=5, R=3, all three loss terms, the real trainer)
+    drives the loss on one batch to near zero without a single NaN. (Same recipe as the dummy-branch
+    integration test in test_trainer.py. scripts/gate_check.py repeats it on a real LibriSeVoc batch.)"""
+    from phasecon.training.trainer import Trainer
+
+    root = CFG
+    cfg = load_many(
+        [str(root / "default.yaml"), str(root / "data" / "librisevoc.yaml"), str(root / "train" / "default.yaml"),
+         str(root / "model" / "phasecon.yaml")],
+        [f"model.baseline.repo_dir={baseline_dir}", f"model.baseline.weights={random_baseline_weights}",
+         "model.phase_branch.encoder.t_out=8", "model.fusion.dim=16", "model.fusion.dropout=0.0",
+         "audio.sample_rate=24000", "audio.num_samples=96000",
+         "train.amp=false", "train.overfit_batch=true", "train.overfit_steps=25", "train.overfit_lr=0.0003",
+         f"output_dir={tmp_path}", "run_name=overfit_real", "device=cpu"],
+    )
+    mu, beta = cfg["train"]["loss"]["mu"], cfg["train"]["loss"]["beta"]
+    assert mu == 0.1  # the shipped weight: the consistency term is part of this run
+    torch.manual_seed(0)
+    wav, batch = batch_for(4)
+    batch = {"waveform": wav, "utt_id": list("abcd"), **batch}
+    model = build_model(cfg)
+    assert not model.phase_branch_is_dummy
+    res = Trainer(cfg, model, [batch], None).overfit_batch()
+    assert all(math.isfinite(x) for x in res["losses"])
+    assert res["initial_loss"] > 1.0 and res["final_loss"] < 0.5 * res["initial_loss"]
+    # "Near zero" is judged on the classification terms (binary + beta * vocoder). The total cannot reach zero:
+    # L_cons = mean(w * (1 - cos dphi)) over bona fide clips has a floor that one batch of audio cannot remove
+    # (measured: it stays at ~0.99, so the total settles at ~mu * 0.99). With mu = 0 the total itself reaches 0.0.
+    model.train()  # the mode the trainer optimised in (BatchNorm uses batch statistics)
+    with torch.no_grad():
+        _, parts = total_loss(model(wav), batch, beta=beta, mu=mu)
+    assert float(parts["bin"]) + beta * float(parts["voc"]) < 0.05, {k: float(v) for k, v in parts.items()}
+    assert math.isfinite(float(parts["cons"])) and 0.0 < float(parts["cons"]) <= 2.0
 
 
 ABLATIONS = sorted((CFG / "ablation").glob("*.yaml"))

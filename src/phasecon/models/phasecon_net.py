@@ -18,33 +18,30 @@ _DEFAULT_DUMMY_T_D = 64
 
 
 def _build_phase_branch(phase_cfg: Dict) -> Tuple[nn.Module, bool]:
-    """Return (branch, is_dummy). `model.phase_branch.impl`: 'real' | 'dummy' | 'auto' (default).
+    """Return (branch, is_dummy). `model.phase_branch.impl`: 'real' (default) | 'dummy'.
 
-    'auto' uses Member B's PhaseBranch and falls back to the random-tensor DummyPhaseBranch only
-    while PhaseBranch is still a stub (PR-21 not merged), with a loud warning. A dummy branch feeds
-    random noise to the fusion: fine for plumbing and tests, meaningless for results.
+    'real' builds Member B's PhaseBranch (PR-21) and never falls back silently: if it cannot be built
+    the error propagates. 'dummy' must be asked for explicitly; it returns the random-tensor
+    DummyPhaseBranch, which is fine for plumbing tests and meaningless for results (scripts/train.py
+    refuses to train on it unless told otherwise, and the warning below is emitted every time).
     """
-    impl = phase_cfg.get("impl", "auto")
-    if impl not in ("real", "dummy", "auto"):
-        raise ValueError(f"model.phase_branch.impl must be real, dummy or auto, got {impl!r}")
+    impl = phase_cfg.get("impl", "real")
+    if impl not in ("real", "dummy"):
+        raise ValueError(f"model.phase_branch.impl must be real or dummy, got {impl!r}")
+    if impl == "real":
+        from .phase_branch import PhaseBranch
+
+        # PhaseBranch(cfg) receives the `model.phase_branch` sub-config (see INTERFACES.md section 3)
+        return PhaseBranch(phase_cfg), False
     enc = phase_cfg.get("encoder", {}) or {}
     t_d = int(enc.get("t_out") or _DEFAULT_DUMMY_T_D)
     c_d = int(enc.get("out_dim", 128))
-    if impl != "dummy":
-        from .phase_branch import PhaseBranch  # imported here: Member B's module may be a stub
-
-        try:
-            # PhaseBranch(cfg) receives the `model.phase_branch` sub-config (see INTERFACES.md section 3)
-            return PhaseBranch(phase_cfg), False
-        except NotImplementedError:
-            if impl == "real":
-                raise
-            msg = (
-                "PhaseBranch is not implemented yet (PR-21): using DummyPhaseBranch, which returns "
-                "RANDOM features. Do not use this model for real training or results."
-            )
-            warnings.warn(msg, RuntimeWarning, stacklevel=3)
-            logger.warning(msg)
+    msg = (
+        "model.phase_branch.impl=dummy: using DummyPhaseBranch, which returns RANDOM features. "
+        "Do not use this model for real training or results."
+    )
+    warnings.warn(msg, RuntimeWarning, stacklevel=3)
+    logger.warning(msg)
     return DummyPhaseBranch(t_d=t_d, c_d=c_d), True
 
 
@@ -74,8 +71,8 @@ class PhaseConNet(nn.Module):
     outputs equals the baseline's outputs.
 
     Config read (all under cfg['model']): name (baseline_only | phasecon_net), baseline.{repo_dir,
-    weights, freeze_encoder, num_vocoder_classes}, phase_branch.{enabled, impl, encoder.{out_dim,
-    t_out}, ...}, fusion.{type, dim, num_heads, dropout, gate_bias_init}, heads.{vocoder_head,
+    weights, freeze_encoder, num_vocoder_classes}, phase_branch.{enabled, impl (real | dummy, default
+    real), encoder.{out_dim, t_out}, ...}, fusion.{type, dim, num_heads, dropout, gate_bias_init}, heads.{vocoder_head,
     gradient_reversal, grl_lambda, pooling (last | mean, default last)}.
     The phase stream is always run in float32, also under autocast (STFT / ULCP must not see fp16).
     """
