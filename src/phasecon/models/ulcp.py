@@ -14,6 +14,10 @@ This is the order of fast Griffin-Lim (Perraudin et al. 2013; `signal/griffin_li
 applied AFTER the magnitude is re-imposed. With learnable=False (fixed alpha, no g_theta) the module
 therefore reproduces `fast_griffin_lim` exactly, which is ablation (ii). The last conv of every
 g_theta starts at zero, so a freshly built learnable ULCP also starts out equal to fast Griffin-Lim.
+
+The output is T_K, which step K computes BEFORE its own momentum and correction. Those two would therefore
+never affect the output and never receive a gradient, so the last step is built without them (fixed alpha,
+no g_theta): every learnable parameter of ULCP is one that can actually learn (PR-27; found in PR-23).
 """
 import torch
 import torch.nn as nn
@@ -64,9 +68,14 @@ class ULCP(nn.Module):
         initial_phase((1, 2, 1), 2, init)  # validates the init name early
         self.init = init
         self.learnable = learnable
+        # the last step's momentum/correction cannot reach the output T_K (see module docstring)
         self.steps = nn.ModuleList(
-            ULCPStep(momentum_init, learnable_momentum and learnable, correction_channels if learnable else 0)
-            for _ in range(num_steps)
+            ULCPStep(
+                momentum_init,
+                learnable_momentum and learnable and k < num_steps - 1,
+                correction_channels if learnable and k < num_steps - 1 else 0,
+            )
+            for k in range(num_steps)
         )
 
     @classmethod
