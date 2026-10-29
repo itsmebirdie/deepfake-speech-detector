@@ -50,9 +50,10 @@ def main(argv=None):
 
     set_seed(int(cfg.get("seed", 0)), bool(cfg.get("deterministic", False)))
     model = build_model(cfg)
-    if getattr(model, "phase_branch_is_dummy", False) and not (args.allow_dummy_phase_branch or args.overfit_batch):
-        sys.exit("refusing to train: the phase branch is the random-feature DummyPhaseBranch (PhaseBranch, "
-                 "PR-21, is not merged). Use --overfit-batch or --allow-dummy-phase-branch for plumbing tests.")
+    if getattr(model, "phase_branch_is_dummy", False) and not args.allow_dummy_phase_branch:
+        sys.exit("refusing to train: model.phase_branch.impl=dummy selects the random-feature DummyPhaseBranch. "
+                 "Remove that override (the default is the real PhaseBranch), or pass --allow-dummy-phase-branch "
+                 "for plumbing tests only.")
     overfit = bool(cfg["train"].get("overfit_batch"))
     train_loader = build_dataloader(cfg, "train", train=True)
     dev_loader = None if overfit else build_dataloader(cfg, "dev", train=False)
