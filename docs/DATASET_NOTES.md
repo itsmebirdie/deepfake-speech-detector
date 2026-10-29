@@ -175,3 +175,39 @@ Sources: [Sun et al., CVPRW 2023, arXiv 2304.13085](https://arxiv.org/pdf/2304.1
 - No randomness: each fold is an exact filter of the official split files. Files: `data/splits/lovo/<V>/{train,dev,test}.txt`, built by `python scripts/make_lovo_splits.py` and checked by `test_committed_lovo_folds_match_protocol`.
 - **Reporting:** for each fold, the EER on its test split (V vs real); then the mean over the six folds. Each model is trained from scratch once per fold with the same settings and seed. The released baseline weights saw every vocoder, so the baseline is **retrained** per fold (PR-26).
 - **Use it:** `--override data.lovo.held_out=<V>`. With `data.subset.enabled: true` too, train/dev are balanced with the PR-09 rule over the fold's 5 vocoders (1,000 fakes per vocoder + 5,000 real for train; 200 + 1,000 for dev), deterministic by seed. Test is never shrunk.
+
+## 11. Baseline through our pipeline (PR-24)
+
+**Result:** the pipeline reproduces the released baseline (parity within tolerance), and a baseline trained through our trainer on the balanced subset reaches **EER 0.30%** on the full test split, against 11.86% for the released weights. The released weights' failure on WaveRNN and WaveNet (section 8) is a property of those weights, not of the architecture or the data.
+
+Run: `.\scripts\run_pr24.ps1` (Windows) or `bash scripts/run_pr24.sh`; model `configs/model/baseline_only.yaml`, 24 kHz / 96,000 samples, CUDA with AMP, seed 1234, one run per row. Training uses the balanced subset of section 9 (12,000 train clips, 2,400 dev clips). Evaluation is `scripts/evaluate.py` on the **full official test split** (18,487 clips). Settings that mirror the authors' recipe: Adam lr 1e-4 on all weights, `beta=1.0` (ours is `L_bin + beta*L_voc`; their `0.5*CE_bin + 0.5*CE_voc` is the same up to a factor 2), `weight_decay=2e-4` (cancels that factor under Adam's L2 decay), `mu=0`. Cosine schedule with 2 warm-up epochs, gradient clipping 5.0, early stopping on dev EER with patience 8 (the fine-tuning run stopped after epoch 18).
+
+**Check 1, parity** (released weights through `scripts/evaluate.py`, compared with the PR-06 numbers of section 8; `scripts/compare_results.py --parity`):
+
+| | EER | AUC | Accuracy | wavegrad | diffwave | parallel_wave_gan | wavernn | wavenet | melgan |
+|---|---|---|---|---|---|---|---|---|---|
+| PR-06 (direct) | 11.86% | 0.9438 | 75.37% | 0.11% | 0.19% | 0.17% | 36.54% | 8.14% | 0.51% |
+| Our pipeline | 11.85% | 0.9438 | 75.37% | 0.08% | 0.19% | 0.19% | 36.58% | 8.14% | 0.53% |
+| Allowed difference | 0.05 pp | 0.001 | 0.1 pp | 0.1 pp | 0.1 pp | 0.1 pp | 0.1 pp | 0.1 pp | 0.1 pp |
+
+All nine metrics pass; the largest difference is 0.037 pp (WaveRNN). The tolerance allows only floating-point noise (the PR-06 run was on the CPU, this one on the GPU). The wrapper itself is bit-identical to the authors' code with the released weights (`tests/test_baseline_wrapper.py`, both weight variants).
+
+**Check 2, trained runs** (`scripts/compare_results.py --no-regress`: pooled EER may be at most 0.5 pp worse than the released weights; better is expected):
+
+| Run | EER | AUC | Accuracy | wavegrad | diffwave | parallel_wave_gan | wavernn | wavenet | melgan |
+|---|---|---|---|---|---|---|---|---|---|
+| Released weights (PR-06) | 11.86% | 0.9438 | 75.37% | 0.11% | 0.19% | 0.17% | 36.54% | 8.14% | 0.51% |
+| Frozen encoder, heads trained | 9.39% | 0.9659 | 85.97% | 0.19% | 0.15% | 0.23% | 27.11% | 5.45% | 0.19% |
+| **Fine-tuned (whole model)** | **0.30%** | 0.99997 | 99.68% | 0.00% | 0.08% | 0.23% | 0.38% | 0.42% | 0.11% |
+
+Both pass. Fine-tuned fakes caught: wavegrad 100.00%, diffwave 99.96%, parallel_wave_gan 99.77%, wavernn 99.20%, wavenet 99.09%, melgan 99.89%.
+
+**What it means**
+
+1. **The fine-tuned row is the baseline for every later comparison** (G5). It is trained and evaluated exactly like PhaseCon-Net will be.
+2. **WaveRNN 36.54% to 0.38% and WaveNet 8.14% to 0.42%** confirm the explanation in section 8: the released weights had not seen these clips. Training only the heads helps WaveRNN less (27.11%), so the released *encoder* lacks the information; the heads cannot recover it.
+3. **In-distribution has almost no headroom** (0.30% EER, paper 0.13%). Differences of a few hundredths of a point between models are within what one seed can produce. The in-distribution run cannot show what phase adds; the leave-one-vocoder-out folds (section 10) can.
+4. **Do not credit a WaveRNN gain to phase** unless it beats 0.38% here (and its LOVO counterpart), as `ARCHITECTURE.md` section 3 requires. The phase study found WaveRNN separable by magnitude alone, so a trained baseline learning it is expected.
+5. **Single seed.** Each row is one run. Report more seeds before claiming differences of this size.
+
+Re-running: the scripts refuse to overwrite finished results and checkpoints. To repeat the whole check, set a new prefix first (PowerShell `$env:PREFIX = "baseline_pipeline_2"`, bash `PREFIX=baseline_pipeline_2`).

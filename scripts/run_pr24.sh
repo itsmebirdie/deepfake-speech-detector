@@ -11,6 +11,8 @@
 #   bash scripts/run_pr24.sh
 #   bash scripts/run_pr24.sh data.num_workers=8 train.batch_size=16
 #   STEPS="parity" bash scripts/run_pr24.sh          # only the parity check (evaluation only, no training)
+# Re-running: finished results and checkpoints are never overwritten, so a second run stops at the first
+# step; set a new PREFIX (for example PREFIX=baseline_pipeline_2) to repeat the whole check.
 # Environment: STEPS (default "parity frozen finetune"), PREFIX (default baseline_pipeline), OUT_DIR
 # (default experiments), REFERENCE (default pr06; or a results folder), PYTHON (default python).
 #

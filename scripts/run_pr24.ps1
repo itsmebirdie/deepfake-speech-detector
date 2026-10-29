@@ -17,6 +17,8 @@
       .\scripts\run_pr24.ps1
       .\scripts\run_pr24.ps1 data.num_workers=8 train.batch_size=16
       $env:STEPS = "parity"; .\scripts\run_pr24.ps1     # only the parity check (evaluation only, no training)
+    Re-running: finished results and checkpoints are never overwritten, so a second run stops at the first
+    step; set a new prefix (`$env:PREFIX = "baseline_pipeline_2"`) to repeat the whole check.
     Environment variables: STEPS (default "parity frozen finetune"), PREFIX (default baseline_pipeline),
     OUT_DIR (default experiments), REFERENCE (default pr06, or a results folder), PYTHON (default python).
 
