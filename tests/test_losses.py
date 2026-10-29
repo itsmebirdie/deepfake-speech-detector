@@ -1,28 +1,14 @@
 """Owner: Member C (PR-15). Tests for losses/classification.py and losses/combined.py.
 
-`consistency_loss` is Member B's (PR-22) and may still be a stub, so the cons term is exercised
-with a stand-in patched into `phasecon.losses.combined`.
+The cons term uses Member B's real `consistency_loss` (PR-22); its own tests are in test_phase_branch.py.
 """
 import pytest
 
 torch = pytest.importorskip("torch")
 F = torch.nn.functional
 
-from phasecon.losses import combined  # noqa: E402
 from phasecon.losses.classification import binary_loss, vocoder_loss  # noqa: E402
 from phasecon.losses.combined import total_loss  # noqa: E402
-
-
-def standin_consistency(cons_per_sample, label):
-    mask = label == 0
-    if not mask.any():
-        return cons_per_sample.sum() * 0.0
-    return cons_per_sample[mask].mean()
-
-
-@pytest.fixture
-def patched_cons(monkeypatch):
-    monkeypatch.setattr(combined, "consistency_loss", standin_consistency)
 
 
 def make_batch(b=6):
@@ -68,7 +54,7 @@ def test_class_weights_and_bad_shapes():
         vocoder_loss(torch.randn(5), label)
 
 
-def test_total_loss_composition(patched_cons):
+def test_total_loss_composition():
     """total == bin + beta*voc + mu*cons on synthetic inputs."""
     out, batch = make_out(), make_batch()
     beta, mu = 0.5, 0.1
@@ -85,7 +71,7 @@ def test_total_loss_composition(patched_cons):
     assert all(t.grad is not None for t in out.values())
 
 
-def test_missing_terms_are_skipped(patched_cons):
+def test_missing_terms_are_skipped():
     """Baseline-only outputs (no cons key) do not crash."""
     batch = make_batch()
     loss, parts = total_loss(make_out(cons=False), batch, beta=0.5, mu=0.1)
@@ -101,7 +87,7 @@ def test_missing_terms_are_skipped(patched_cons):
         total_loss(make_out(), batch, beta=-1.0, mu=0.1)
 
 
-def test_mu_zero_removes_cons_gradient(patched_cons):
+def test_mu_zero_removes_cons_gradient():
     """mu=0 -> no gradient through cons term."""
     out, batch = make_out(), make_batch()
     loss, parts = total_loss(out, batch, beta=0.5, mu=0.0)
@@ -111,8 +97,8 @@ def test_mu_zero_removes_cons_gradient(patched_cons):
     assert out["logits_bin"].grad is not None
 
 
-def test_mu_zero_does_not_need_the_consistency_module():
-    """With the stub still in place (PR-22 not merged), mu=0 must work."""
+def test_mu_zero_skips_the_cons_term():
+    """mu=0 leaves the cons term out entirely (baseline-only and ablation iv runs)."""
     out, batch = make_out(), make_batch()
     loss, parts = total_loss(out, batch, beta=0.5, mu=0.0)
     assert torch.isfinite(loss) and "cons" not in parts
@@ -124,7 +110,7 @@ def test_beta_zero_removes_vocoder_gradient():
     assert out["logits_voc"].grad is None
 
 
-def test_cons_term_gradient_reaches_bona_fide_only(patched_cons):
+def test_cons_term_gradient_reaches_bona_fide_only():
     out, batch = make_out(), make_batch()
     total_loss(out, batch, beta=0.0, mu=1.0)[0].backward()
     g = out["cons_per_sample"].grad
