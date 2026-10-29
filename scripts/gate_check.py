@@ -25,7 +25,10 @@ import json
 import math
 import os
 import platform
-import resource
+try:
+    import resource  # Unix only
+except ImportError:  # Windows
+    resource = None
 import statistics
 import sys
 import time
@@ -209,7 +212,8 @@ def profile(cfg, batch, device, warmup=2, timed=5):
            "torch": torch.__version__}
     if device.type == "cuda":
         out["gpu_peak_memory_gb"] = torch.cuda.max_memory_allocated() / 1024 ** 3
-    out["process_peak_rss_gb"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024 ** 2  # Linux: KB
+    out["process_peak_rss_gb"] = (resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024 ** 2
+                                  if resource is not None else None)  # Linux: KB; not available on Windows
     out["status"] = "INFO"
     return out
 
@@ -237,11 +241,13 @@ def markdown(r):
         row("G4 DummyPhaseBranch not in use", {"status": "PASS" if i["real_branch"] else "FAIL"}, f"real branch: {i['real_branch']}"),
     ]
     mem = f"GPU peak {p['gpu_peak_memory_gb']:.2f} GB, " if "gpu_peak_memory_gb" in p else ""
+    rss = (f"process peak RSS {p['process_peak_rss_gb']:.2f} GB, "
+           if p.get("process_peak_rss_gb") is not None else "")
     return "\n".join([
         f"### Gate check (PR-23), batch source: {r['batch_source']}, {p['device']}, torch {p['torch']}", "",
         "| Check | Result | Detail |", "|---|---|---|", *rows, "",
         f"**Cost at K={p['K']}, R={p['R']}** (batch {p['batch_size']} x {p['num_samples']} samples, AMP {p['amp']}): "
-        f"{mem}process peak RSS {p['process_peak_rss_gb']:.2f} GB, "
+        f"{mem}{rss}"
         f"step time {p['step_time_s_median']:.2f} s (median of {p['timed_steps']}, min {p['step_time_s_min']:.2f} s).", ""])
 
 
