@@ -56,4 +56,20 @@ def test_batch_independence():
 
 def test_consistency_loss_masks_bona_fide():
     """consistency_loss ignores label==1 samples and handles all-fake batches."""
-    pytest.skip("not implemented yet")
+    from phasecon.losses.consistency import consistency_loss
+
+    cons = torch.tensor([0.2, 5.0, 0.4, 9.0], requires_grad=True)
+    label = torch.tensor([0, 1, 0, 1])
+    loss = consistency_loss(cons, label)
+    assert loss.item() == pytest.approx(0.3)  # mean of the two real clips; fakes (5.0, 9.0) ignored
+    loss.backward()
+    assert cons.grad.tolist() == pytest.approx([0.5, 0.0, 0.5, 0.0])  # gradient only on real clips
+
+    cons = torch.tensor([3.0, 7.0], requires_grad=True)
+    loss = consistency_loss(cons, torch.tensor([1, 1]))  # all fake
+    assert loss.item() == 0.0 and torch.isfinite(loss) and loss.requires_grad
+    loss.backward()
+    assert cons.grad.tolist() == [0.0, 0.0]  # graph intact, no NaN
+
+    with pytest.raises(ValueError):
+        consistency_loss(torch.zeros(3), torch.zeros(2))
