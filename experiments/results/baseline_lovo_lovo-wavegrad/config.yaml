@@ -1,0 +1,70 @@
+seed: 1234
+device: cuda
+output_dir: experiments
+audio:
+  sample_rate: 24000
+  num_samples: 96000
+data:
+  root: data/raw/LibriSeVoc
+  split_files:
+    train: data/splits/train.txt
+    dev: data/splits/dev.txt
+    test: data/splits/test.txt
+  vocoders:
+  - wavegrad
+  - diffwave
+  - parallel_wave_gan
+  - wavernn
+  - wavenet
+  - melgan
+  subset:
+    enabled: true
+    per_vocoder_train: 1000
+    per_vocoder_dev: 200
+    per_vocoder_test: null
+    manifest_dir: data/subsets
+  num_workers: 4
+  lovo:
+    held_out: wavegrad
+    split_dir: data/splits/lovo
+train:
+  epochs: 50
+  batch_size: 32
+  amp: true
+  grad_clip: 5.0
+  optimizer:
+    name: adam
+    lr_encoder: 1e-4
+    lr_new: 1e-4
+    weight_decay: 2e-4
+  scheduler:
+    name: cosine
+    warmup_epochs: 2
+  early_stopping:
+    metric: dev_eer
+    mode: min
+    patience: 8
+  loss:
+    beta: 1.0
+    mu: 0.0
+  checkpoint:
+    save_best: true
+    save_last: true
+model:
+  name: baseline_only
+  baseline:
+    repo_dir: third_party/Synthetic-Voice-Detection-Vocoder-Artifacts
+    weights: null
+    freeze_encoder: false
+    num_vocoder_classes: 7
+  phase_branch:
+    enabled: false
+eval:
+  protocol: leave_one_vocoder_out
+  metrics:
+  - eer
+  - accuracy
+  - auc
+  report_per_vocoder: true
+  save_scores: true
+run_name: baseline_lovo_lovo-wavegrad_train

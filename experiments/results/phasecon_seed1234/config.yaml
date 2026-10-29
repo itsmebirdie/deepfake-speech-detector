@@ -1,0 +1,81 @@
+seed: 1234
+device: cuda
+output_dir: experiments
+audio:
+  sample_rate: 24000
+  num_samples: 96000
+data:
+  root: data/raw/LibriSeVoc
+  split_files:
+    train: data/splits/train.txt
+    dev: data/splits/dev.txt
+    test: data/splits/test.txt
+  vocoders:
+  - wavegrad
+  - diffwave
+  - parallel_wave_gan
+  - wavernn
+  - wavenet
+  - melgan
+  subset:
+    enabled: false
+    per_vocoder_train: 1000
+    per_vocoder_dev: 200
+    per_vocoder_test: null
+    manifest_dir: data/subsets
+  num_workers: 4
+  lovo:
+    held_out: null
+    split_dir: data/splits/lovo
+model:
+  name: phasecon_net
+  baseline:
+    repo_dir: third_party/Synthetic-Voice-Detection-Vocoder-Artifacts
+    weights: null
+    freeze_encoder: false
+    num_vocoder_classes: 7
+  phase_branch:
+    enabled: true
+    stft_resolutions:
+    - - 512
+      - 128
+      - 512
+    - - 1024
+      - 256
+      - 1024
+    - - 2048
+      - 512
+      - 2048
+    ulcp:
+      num_steps: 5
+      init: zeros
+      learnable_momentum: true
+      momentum_init: 0.99
+      correction_channels: 8
+      learnable: true
+    discrepancy:
+      tau: 0.001
+      use_if_channel: true
+      mode: residual
+    encoder:
+      channels:
+      - 16
+      - 32
+      - 64
+      out_dim: 128
+      t_out: 43
+  fusion:
+    type: gated_cross_attention
+    dim: 256
+    num_heads: 4
+    dropout: 0.1
+  heads:
+    vocoder_head: true
+    gradient_reversal: false
+eval:
+  split: test
+  metrics:
+  - eer
+  - accuracy
+  - auc
+  save_scores: true

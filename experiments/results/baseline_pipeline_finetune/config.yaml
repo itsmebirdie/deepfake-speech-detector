@@ -1,0 +1,45 @@
+seed: 1234
+device: cuda
+output_dir: experiments
+audio:
+  sample_rate: 24000
+  num_samples: 96000
+data:
+  root: data/raw/LibriSeVoc
+  split_files:
+    train: data/splits/train.txt
+    dev: data/splits/dev.txt
+    test: data/splits/test.txt
+  vocoders:
+  - wavegrad
+  - diffwave
+  - parallel_wave_gan
+  - wavernn
+  - wavenet
+  - melgan
+  subset:
+    enabled: false
+    per_vocoder_train: 1000
+    per_vocoder_dev: 200
+    per_vocoder_test: null
+    manifest_dir: data/subsets
+  num_workers: 4
+  lovo:
+    held_out: null
+    split_dir: data/splits/lovo
+model:
+  name: baseline_only
+  baseline:
+    repo_dir: third_party/Synthetic-Voice-Detection-Vocoder-Artifacts
+    weights: null
+    freeze_encoder: false
+    num_vocoder_classes: 7
+  phase_branch:
+    enabled: false
+eval:
+  split: test
+  metrics:
+  - eer
+  - accuracy
+  - auc
+  save_scores: true

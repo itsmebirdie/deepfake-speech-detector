@@ -1,0 +1,26 @@
+{
+  "n_clips": 5282,
+  "eer": 0.0946611132146914,
+  "eer_threshold": -8.392438888549805,
+  "auc": 0.9602480673146969,
+  "accuracy": 0.7928814842862552,
+  "accuracy_at_eer": 0.9053388867853086,
+  "per_vocoder": {
+    "wavegrad": {
+      "eer": 0.0946611132146914,
+      "auc": 0.9602480673146969,
+      "caught": 0.5963650132525559,
+      "n_fake": 2641
+    }
+  },
+  "bona_fide_correct": 0.9893979553199546,
+  "run_name": "baseline_lovo_lovo-wavegrad",
+  "split": "test",
+  "protocol": "leave_one_vocoder_out",
+  "held_out": "wavegrad",
+  "checkpoint": "experiments\\checkpoints\\baseline_lovo_lovo-wavegrad_train\\best.pt",
+  "device": "cuda",
+  "git_hash": "22ec731b0ee705533fe02590527c2be46db451c8",
+  "git_dirty": true,
+  "created": "2026-10-29T11:29:30+00:00"
+}
