@@ -39,7 +39,7 @@ def test_magnitude_is_preserved(stft, A):
     torch.manual_seed(1)
     for K in (1, 3, 5):
         ulcp = make(K)
-        for step in ulcp.steps:  # perturb the learnable parts so the test is not trivially the GL path
+        for step in ulcp.steps[:-1]:  # perturb the learnable parts so the test is not trivially the GL path
             step.alpha.data.fill_(0.7)
             torch.nn.init.normal_(step.correction[-1].weight, std=1e-2)
         Y = ulcp(A, stft, 0, T)
@@ -73,11 +73,12 @@ def test_gradcheck_small(stft):
     X = stft(wav)[0]
     loss = (1 - torch.cos(torch.angle(X * torch.conj(ulcp(A, stft, 0, 2048))))).mean()
     loss.backward()
-    for step in ulcp.steps[:-1]:  # the last step's momentum/correction do not reach the output T_K
+    for step in ulcp.steps[:-1]:
         assert step.alpha.grad is not None and step.alpha.grad.abs() > 0
         assert step.correction[-1].weight.grad.abs().sum() > 0
-    learnable = sum(p.numel() for p in ulcp.parameters() if p.requires_grad)
-    assert learnable > 0
+    # no dead parameters: the last step (whose momentum/correction cannot reach T_K) has none
+    assert ulcp.steps[-1].correction is None and not isinstance(ulcp.steps[-1].alpha, torch.nn.Parameter)
+    assert all(p.grad is not None for p in ulcp.parameters())
 
 
 def saved_bytes(ulcp, A, stft):

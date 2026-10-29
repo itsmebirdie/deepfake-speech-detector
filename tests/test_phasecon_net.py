@@ -3,7 +3,7 @@
 PR-23: the default branch is now Member B's real PhaseBranch (K=5 ULCP steps, R=3 resolutions); the
 real_* / backward / overfit / autocast tests below run on it. The older plumbing tests still ask for the
 DummyPhaseBranch explicitly (`impl=dummy`) because they only check wiring and are cheap. B's own ablation
-configs (a1, a2, a6, PR-27) stay skipped with the reason below.
+configs (a1, a2, a6) run on the real branch (PR-27).
 """
 import math
 import warnings
@@ -25,7 +25,6 @@ from phasecon.utils.config import load_many  # noqa: E402
 REPO = Path(__file__).resolve().parents[1]
 CFG = REPO / "configs"
 WAV_LEN = 12_000  # T_b = 5: short enough for fast CPU tests
-NEEDS_REAL_BRANCH = "needs Member B's real PhaseBranch (PR-21/22), not merged yet"
 
 
 def make_cfg(baseline_dir, weights, model_file="model/phasecon.yaml", extra_files=(), overrides=()):
@@ -283,8 +282,8 @@ def test_backward_updates_new_modules(baseline_dir, random_baseline_weights):
 
     Two steps because every ULCP correction ends in a zero-initialised conv: on step 1 only that last conv
     and the momenta get gradient, the first conv of g_theta starts moving on step 2.
-    Not asserted: the LAST unrolled step's alpha and g_theta. ULCP returns Y_K = T_K, which is computed before
-    step K applies them (models/ulcp.py), so they can never receive a gradient. Reported to Member B."""
+    The LAST unrolled step has no alpha or g_theta to check: ULCP returns Y_K = T_K, computed before step K
+    would apply them, so since PR-27 that step is built without them (models/ulcp.py)."""
     model = build_model(real_cfg(baseline_dir, random_baseline_weights))
     k = len(model.phase_branch.ulcp[0].steps)
     assert k == 5 and len(model.phase_branch.ulcp) == 3  # the K=5, R=3 setting of PR-23
@@ -381,17 +380,18 @@ C_ABLATIONS = {"a3_concat_fusion", "a4_no_cons_loss", "a5_gradient_reversal", "a
 
 def _ablation_params():
     for path in ABLATIONS:
-        marks = [] if path.stem in C_ABLATIONS else [pytest.mark.skip(reason=NEEDS_REAL_BRANCH + " (PR-27)")]
-        yield pytest.param(path, id=path.stem, marks=marks)
+        yield pytest.param(path, id=path.stem)
 
 
 @pytest.mark.parametrize("path", list(_ablation_params()))
 def test_each_ablation_config_builds(path, baseline_dir, random_baseline_weights):
     """Every configs/ablation/*.yaml instantiates a model and runs a forward + backward pass.
-    Member C's four (a3, a4, a5, a7) run here on the dummy branch; Member B's need the real one."""
+    Member C's four (a3, a4, a5, a7) run here on the dummy branch; Member B's (a1, a2, a6) on the real one."""
     cfg = make_cfg(baseline_dir, random_baseline_weights, "model/baseline_only.yaml", extra_files=[path])
-    cfg["model"]["phase_branch"]["impl"] = "dummy"
+    cfg["model"]["phase_branch"]["impl"] = "dummy" if path.stem in C_ABLATIONS else "real"
     model = build_model(cfg)
+    if path.stem not in C_ABLATIONS:
+        assert not model.phase_branch_is_dummy
     assert model.phase_enabled  # ablation files inherit phasecon.yaml
     wav, batch = batch_for(4)
     model.train()
@@ -421,3 +421,34 @@ def test_each_ablation_config_builds(path, baseline_dir, random_baseline_weights
     else:
         assert any(p.grad is not None for p in model.baseline.encoder_parameters())
     assert any(p.grad is not None for p in model.fusion.parameters())
+    branch = model.phase_branch
+    if name == "a1_raw_phase":  # (i): raw phase into the encoder, no ULCP, no consistency term
+        assert branch.mode == "raw_phase" and branch.ulcp is None
+        assert torch.equal(out["cons_per_sample"], torch.zeros(4))
+    if name == "a2_fixed_griffin_lim":  # (ii): plain fast Griffin-Lim, nothing to learn in ULCP
+        assert branch.ulcp is not None and sum(p.numel() for p in branch.ulcp.parameters()) == 0
+    if name == "a6_sweep_K":
+        assert [len(u.steps) for u in branch.ulcp] == [3, 3, 3]
+    if name == "a6_sweep_R":
+        assert branch.num_resolutions == 1 and len(branch.ulcp) == 1
+    if name not in C_ABLATIONS:
+        assert any(p.grad is not None for p in branch.encoder.parameters())
+
+
+@pytest.mark.parametrize("k,r", [(1, 3), (3, 3), (5, 3), (8, 3), (5, 1), (5, 2)], ids=lambda v: str(v))
+def test_phase_sweeps_run_forward_and_backward(k, r, baseline_dir, random_baseline_weights):
+    """Ablation (vi): K in {1,3,5,8} and R in {1,2,3} (R=3, K=5 is the default model) build and train a step,
+    and every learnable ULCP parameter gets a gradient (no dead parameters)."""
+    resolutions = [[512, 128, 512], [1024, 256, 1024], [2048, 512, 2048]][3 - r:]
+    cfg = real_cfg(baseline_dir, random_baseline_weights, [
+        f"model.phase_branch.ulcp.num_steps={k}", f"model.phase_branch.stft_resolutions={resolutions}",
+    ])
+    model = build_model(cfg).train()
+    assert [len(u.steps) for u in model.phase_branch.ulcp] == [k] * r
+    wav, batch = batch_for(4)
+    loss, _ = total_loss(model(wav), batch, beta=0.5, mu=0.1)
+    loss.backward()
+    assert torch.isfinite(loss)
+    ulcp_params = [p for p in model.phase_branch.ulcp.parameters()]
+    assert len(ulcp_params) == r * (k - 1) * 5  # per learnable step: alpha + 2 convs x (weight, bias)
+    assert all(p.grad is not None and torch.isfinite(p.grad).all() for p in ulcp_params)
