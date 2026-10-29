@@ -1,0 +1,4 @@
+Reference,Run,Paired clips,"Ref right, run wrong","Run right, ref wrong",McNemar p (acc@0),dEER pp (run-ref),dEER 95% CI low,dEER 95% CI high
+baseline_pipeline_finetune,baseline_pipeline_frozen,129409,44062,280,0.0,49.70970591947494,49.32287252904443,50.127612195957525
+baseline_pipeline_finetune,baseline_pipeline_released,129409,54248,241,0.0,49.70970591947494,49.317050119303055,50.13697125006762
+baseline_pipeline_finetune,phasecon_seed1234,129409,31786,314,0.0,49.70970591947494,49.358588853943694,50.09080705360523
