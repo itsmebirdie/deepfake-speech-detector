@@ -169,8 +169,11 @@ def paired_tests(runs, ref, n_boot, seed):
     for run in runs:
         if run is ref:
             continue
-        a = ref["df"][["utt_id", "label", "score"]].merge(run["df"][["utt_id", "score"]], on="utt_id",
-                                                           suffixes=("_ref", "_run"))
+        # one row per clip: a sentence (utt_id) has 7 clips (real + 6 vocoders), so the clip key is
+        # (utt_id, vocoder_id); merging on utt_id alone paired real clips with fakes (49x too many rows)
+        key = ["utt_id", "vocoder_id", "label"]
+        a = ref["df"][key + ["score"]].merge(run["df"][key + ["score"]], on=key, suffixes=("_ref", "_run"),
+                                             validate="one_to_one")
         if a.empty:
             continue
         y = a["label"].to_numpy(int)
