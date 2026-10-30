@@ -55,9 +55,9 @@ McNemar tests whether the two models' accuracy at threshold 0 differs on the sam
 
 | Reference | Run | Paired clips | Ref right, run wrong | Run right, ref wrong | McNemar p (acc@0) | dEER pp (run-ref) | dEER 95% CI low | dEER 95% CI high |
 |---|---|---|---|---|---|---|---|---|
-| baseline_pipeline_finetune | baseline_pipeline_frozen | 129409 | 44062 | 280 | 0 | 49.71 | 49.32 | 50.13 |
-| baseline_pipeline_finetune | baseline_pipeline_released | 129409 | 54248 | 241 | 0 | 49.71 | 49.32 | 50.14 |
-| baseline_pipeline_finetune | phasecon_seed1234 | 129409 | 31786 | 314 | 0 | 49.71 | 49.36 | 50.09 |
+| baseline_pipeline_finetune | baseline_pipeline_frozen | 18487 | 2563 | 29 | 0 | 9.106 | 8.652 | 9.517 |
+| baseline_pipeline_finetune | baseline_pipeline_released | 18487 | 4509 | 16 | 0 | 11.56 | 11.02 | 12.08 |
+| baseline_pipeline_finetune | phasecon_seed1234 | 18487 | 55 | 43 | 0.2664 | 0.2335 | 0.07573 | 0.3786 |
 
 ## Figures
 
